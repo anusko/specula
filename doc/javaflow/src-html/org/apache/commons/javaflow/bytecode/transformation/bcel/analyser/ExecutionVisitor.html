@@ -1,0 +1,1155 @@
+<HTML>
+<BODY BGCOLOR="white">
+<PRE>
+<FONT color="green">001</FONT>    /*<a name="line.1"></a>
+<FONT color="green">002</FONT>     * Licensed to the Apache Software Foundation (ASF) under one or more<a name="line.2"></a>
+<FONT color="green">003</FONT>     * contributor license agreements.  See the NOTICE file distributed with<a name="line.3"></a>
+<FONT color="green">004</FONT>     * this work for additional information regarding copyright ownership.<a name="line.4"></a>
+<FONT color="green">005</FONT>     * The ASF licenses this file to You under the Apache License, Version 2.0<a name="line.5"></a>
+<FONT color="green">006</FONT>     * (the "License"); you may not use this file except in compliance with<a name="line.6"></a>
+<FONT color="green">007</FONT>     * the License.  You may obtain a copy of the License at<a name="line.7"></a>
+<FONT color="green">008</FONT>     *<a name="line.8"></a>
+<FONT color="green">009</FONT>     *      http://www.apache.org/licenses/LICENSE-2.0<a name="line.9"></a>
+<FONT color="green">010</FONT>     *<a name="line.10"></a>
+<FONT color="green">011</FONT>     * Unless required by applicable law or agreed to in writing, software<a name="line.11"></a>
+<FONT color="green">012</FONT>     * distributed under the License is distributed on an "AS IS" BASIS,<a name="line.12"></a>
+<FONT color="green">013</FONT>     * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.<a name="line.13"></a>
+<FONT color="green">014</FONT>     * See the License for the specific language governing permissions and<a name="line.14"></a>
+<FONT color="green">015</FONT>     * limitations under the License.<a name="line.15"></a>
+<FONT color="green">016</FONT>     */<a name="line.16"></a>
+<FONT color="green">017</FONT>    package org.apache.commons.javaflow.bytecode.transformation.bcel.analyser;<a name="line.17"></a>
+<FONT color="green">018</FONT>    <a name="line.18"></a>
+<FONT color="green">019</FONT>    import org.apache.bcel.Constants;<a name="line.19"></a>
+<FONT color="green">020</FONT>    import org.apache.bcel.classfile.Constant;<a name="line.20"></a>
+<FONT color="green">021</FONT>    import org.apache.bcel.classfile.ConstantDouble;<a name="line.21"></a>
+<FONT color="green">022</FONT>    import org.apache.bcel.classfile.ConstantFloat;<a name="line.22"></a>
+<FONT color="green">023</FONT>    import org.apache.bcel.classfile.ConstantInteger;<a name="line.23"></a>
+<FONT color="green">024</FONT>    import org.apache.bcel.classfile.ConstantLong;<a name="line.24"></a>
+<FONT color="green">025</FONT>    import org.apache.bcel.classfile.ConstantString;<a name="line.25"></a>
+<FONT color="green">026</FONT>    import org.apache.bcel.classfile.ConstantClass;<a name="line.26"></a>
+<FONT color="green">027</FONT>    import org.apache.bcel.generic.*;<a name="line.27"></a>
+<FONT color="green">028</FONT>    <a name="line.28"></a>
+<FONT color="green">029</FONT>    /**<a name="line.29"></a>
+<FONT color="green">030</FONT>     * This Visitor class may be used for a type-based Java Virtual Machine<a name="line.30"></a>
+<FONT color="green">031</FONT>     * simulation.<a name="line.31"></a>
+<FONT color="green">032</FONT>     * It does not check for correct types on the OperandStack or in the<a name="line.32"></a>
+<FONT color="green">033</FONT>     * LocalVariables; nor does it check their sizes are sufficiently big.<a name="line.33"></a>
+<FONT color="green">034</FONT>     * Thus, to use this Visitor for bytecode verifying, you have to make sure<a name="line.34"></a>
+<FONT color="green">035</FONT>     * externally that the type constraints of the Java Virtual Machine instructions<a name="line.35"></a>
+<FONT color="green">036</FONT>     * are satisfied. An InstConstraintVisitor may be used for this.<a name="line.36"></a>
+<FONT color="green">037</FONT>     * Anyway, this Visitor does not mandate it. For example, when you<a name="line.37"></a>
+<FONT color="green">038</FONT>     * visitIADD(IADD o), then there are two stack slots popped and one<a name="line.38"></a>
+<FONT color="green">039</FONT>     * stack slot containing a Type.INT is pushed (where you could also<a name="line.39"></a>
+<FONT color="green">040</FONT>     * pop only one slot if you know there are two Type.INT on top of the<a name="line.40"></a>
+<FONT color="green">041</FONT>     * stack). Monitor-specific behaviour is not simulated.<a name="line.41"></a>
+<FONT color="green">042</FONT>     * <a name="line.42"></a>
+<FONT color="green">043</FONT>     * &lt;/P&gt;&lt;B&gt;Conventions:&lt;/B&gt;<a name="line.43"></a>
+<FONT color="green">044</FONT>     *<a name="line.44"></a>
+<FONT color="green">045</FONT>     * Type.VOID will never be pushed onto the stack. Type.DOUBLE and Type.LONG<a name="line.45"></a>
+<FONT color="green">046</FONT>     * that would normally take up two stack slots (like Double_HIGH and<a name="line.46"></a>
+<FONT color="green">047</FONT>     * Double_LOW) are represented by a simple single Type.DOUBLE or Type.LONG<a name="line.47"></a>
+<FONT color="green">048</FONT>     * object on the stack here.<a name="line.48"></a>
+<FONT color="green">049</FONT>     * If a two-slot type is stored into a local variable, the next variable<a name="line.49"></a>
+<FONT color="green">050</FONT>     * is given the type Type.UNKNOWN.<a name="line.50"></a>
+<FONT color="green">051</FONT>     * <a name="line.51"></a>
+<FONT color="green">052</FONT>     * WARNING! These classes are a fork of the bcel verifier.<a name="line.52"></a>
+<FONT color="green">053</FONT>     *<a name="line.53"></a>
+<FONT color="green">054</FONT>     * @see #visitDSTORE(DSTORE o)<a name="line.54"></a>
+<FONT color="green">055</FONT>     * @see org.apache.bcel.verifier.structurals.InstConstraintVisitor<a name="line.55"></a>
+<FONT color="green">056</FONT>     */<a name="line.56"></a>
+<FONT color="green">057</FONT>    public class ExecutionVisitor extends EmptyVisitor implements Visitor{<a name="line.57"></a>
+<FONT color="green">058</FONT>    <a name="line.58"></a>
+<FONT color="green">059</FONT>            /**<a name="line.59"></a>
+<FONT color="green">060</FONT>             * The executionframe we're operating on.<a name="line.60"></a>
+<FONT color="green">061</FONT>             */<a name="line.61"></a>
+<FONT color="green">062</FONT>            private Frame frame = null;<a name="line.62"></a>
+<FONT color="green">063</FONT>    <a name="line.63"></a>
+<FONT color="green">064</FONT>            /**<a name="line.64"></a>
+<FONT color="green">065</FONT>             * The ConstantPoolGen we're working with.<a name="line.65"></a>
+<FONT color="green">066</FONT>             * @see #setConstantPoolGen(ConstantPoolGen)<a name="line.66"></a>
+<FONT color="green">067</FONT>             */<a name="line.67"></a>
+<FONT color="green">068</FONT>            private ConstantPoolGen cpg = null;<a name="line.68"></a>
+<FONT color="green">069</FONT>    <a name="line.69"></a>
+<FONT color="green">070</FONT>            /**<a name="line.70"></a>
+<FONT color="green">071</FONT>             * Constructor. Constructs a new instance of this class.<a name="line.71"></a>
+<FONT color="green">072</FONT>             */<a name="line.72"></a>
+<FONT color="green">073</FONT>            public ExecutionVisitor(){}<a name="line.73"></a>
+<FONT color="green">074</FONT>    <a name="line.74"></a>
+<FONT color="green">075</FONT>            /**<a name="line.75"></a>
+<FONT color="green">076</FONT>             * The OperandStack from the current Frame we're operating on.<a name="line.76"></a>
+<FONT color="green">077</FONT>             * @see #setFrame(Frame)<a name="line.77"></a>
+<FONT color="green">078</FONT>             */<a name="line.78"></a>
+<FONT color="green">079</FONT>            private OperandStack stack(){<a name="line.79"></a>
+<FONT color="green">080</FONT>                    return frame.getStack();<a name="line.80"></a>
+<FONT color="green">081</FONT>            }<a name="line.81"></a>
+<FONT color="green">082</FONT>    <a name="line.82"></a>
+<FONT color="green">083</FONT>            /**<a name="line.83"></a>
+<FONT color="green">084</FONT>             * The LocalVariables from the current Frame we're operating on.<a name="line.84"></a>
+<FONT color="green">085</FONT>             * @see #setFrame(Frame)<a name="line.85"></a>
+<FONT color="green">086</FONT>             */<a name="line.86"></a>
+<FONT color="green">087</FONT>            private LocalVariables locals(){<a name="line.87"></a>
+<FONT color="green">088</FONT>                    return frame.getLocals();<a name="line.88"></a>
+<FONT color="green">089</FONT>            }<a name="line.89"></a>
+<FONT color="green">090</FONT>    <a name="line.90"></a>
+<FONT color="green">091</FONT>            /**<a name="line.91"></a>
+<FONT color="green">092</FONT>             * Sets the ConstantPoolGen needed for symbolic execution.<a name="line.92"></a>
+<FONT color="green">093</FONT>             */<a name="line.93"></a>
+<FONT color="green">094</FONT>            public void setConstantPoolGen(ConstantPoolGen cpg){<a name="line.94"></a>
+<FONT color="green">095</FONT>                    this.cpg = cpg;<a name="line.95"></a>
+<FONT color="green">096</FONT>            }<a name="line.96"></a>
+<FONT color="green">097</FONT>            <a name="line.97"></a>
+<FONT color="green">098</FONT>            /**<a name="line.98"></a>
+<FONT color="green">099</FONT>             * The only method granting access to the single instance of<a name="line.99"></a>
+<FONT color="green">100</FONT>             * the ExecutionVisitor class. Before actively using this<a name="line.100"></a>
+<FONT color="green">101</FONT>             * instance, &lt;B&gt;SET THE ConstantPoolGen FIRST&lt;/B&gt;.<a name="line.101"></a>
+<FONT color="green">102</FONT>             * @see #setConstantPoolGen(ConstantPoolGen)<a name="line.102"></a>
+<FONT color="green">103</FONT>             */<a name="line.103"></a>
+<FONT color="green">104</FONT>            public void setFrame(Frame f){<a name="line.104"></a>
+<FONT color="green">105</FONT>                    this.frame = f;<a name="line.105"></a>
+<FONT color="green">106</FONT>            }<a name="line.106"></a>
+<FONT color="green">107</FONT>    <a name="line.107"></a>
+<FONT color="green">108</FONT>            ///** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.108"></a>
+<FONT color="green">109</FONT>            //public void visitWIDE(WIDE o){<a name="line.109"></a>
+<FONT color="green">110</FONT>            // The WIDE instruction is modelled as a flag<a name="line.110"></a>
+<FONT color="green">111</FONT>            // of the embedded instructions in BCEL.<a name="line.111"></a>
+<FONT color="green">112</FONT>            // Therefore BCEL checks for possible errors<a name="line.112"></a>
+<FONT color="green">113</FONT>            // when parsing in the .class file: We don't<a name="line.113"></a>
+<FONT color="green">114</FONT>            // have even the possibilty to care for WIDE<a name="line.114"></a>
+<FONT color="green">115</FONT>            // here.<a name="line.115"></a>
+<FONT color="green">116</FONT>            //}<a name="line.116"></a>
+<FONT color="green">117</FONT>    <a name="line.117"></a>
+<FONT color="green">118</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.118"></a>
+<FONT color="green">119</FONT>            public void visitAALOAD(AALOAD o){<a name="line.119"></a>
+<FONT color="green">120</FONT>                    stack().pop();                                                                                                          // pop the index int<a name="line.120"></a>
+<FONT color="green">121</FONT>    //System.out.print(stack().peek());<a name="line.121"></a>
+<FONT color="green">122</FONT>                    Type t = stack().pop(); // Pop Array type<a name="line.122"></a>
+<FONT color="green">123</FONT>                    if (t == Type.NULL){<a name="line.123"></a>
+<FONT color="green">124</FONT>                            stack().push(Type.NULL);<a name="line.124"></a>
+<FONT color="green">125</FONT>                    }       // Do nothing stackwise --- a NullPointerException is thrown at Run-Time<a name="line.125"></a>
+<FONT color="green">126</FONT>                    else{<a name="line.126"></a>
+<FONT color="green">127</FONT>                            ArrayType at = (ArrayType) t;   <a name="line.127"></a>
+<FONT color="green">128</FONT>                            stack().push(at.getElementType());<a name="line.128"></a>
+<FONT color="green">129</FONT>                    }<a name="line.129"></a>
+<FONT color="green">130</FONT>            }<a name="line.130"></a>
+<FONT color="green">131</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.131"></a>
+<FONT color="green">132</FONT>            public void visitAASTORE(AASTORE o){<a name="line.132"></a>
+<FONT color="green">133</FONT>                    stack().pop();<a name="line.133"></a>
+<FONT color="green">134</FONT>                    stack().pop();<a name="line.134"></a>
+<FONT color="green">135</FONT>                    stack().pop();<a name="line.135"></a>
+<FONT color="green">136</FONT>            }<a name="line.136"></a>
+<FONT color="green">137</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.137"></a>
+<FONT color="green">138</FONT>            public void visitACONST_NULL(ACONST_NULL o){<a name="line.138"></a>
+<FONT color="green">139</FONT>                    stack().push(Type.NULL);<a name="line.139"></a>
+<FONT color="green">140</FONT>            }<a name="line.140"></a>
+<FONT color="green">141</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.141"></a>
+<FONT color="green">142</FONT>            public void visitALOAD(ALOAD o){<a name="line.142"></a>
+<FONT color="green">143</FONT>                    stack().push(locals().get(o.getIndex()));<a name="line.143"></a>
+<FONT color="green">144</FONT>            }<a name="line.144"></a>
+<FONT color="green">145</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.145"></a>
+<FONT color="green">146</FONT>            public void visitANEWARRAY(ANEWARRAY o){<a name="line.146"></a>
+<FONT color="green">147</FONT>                    stack().pop(); //count<a name="line.147"></a>
+<FONT color="green">148</FONT>                    stack().push( new ArrayType(o.getType(cpg), 1) );<a name="line.148"></a>
+<FONT color="green">149</FONT>            }<a name="line.149"></a>
+<FONT color="green">150</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.150"></a>
+<FONT color="green">151</FONT>            public void visitARETURN(ARETURN o){<a name="line.151"></a>
+<FONT color="green">152</FONT>                    stack().pop();<a name="line.152"></a>
+<FONT color="green">153</FONT>            }<a name="line.153"></a>
+<FONT color="green">154</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.154"></a>
+<FONT color="green">155</FONT>            public void visitARRAYLENGTH(ARRAYLENGTH o){<a name="line.155"></a>
+<FONT color="green">156</FONT>                    stack().pop();<a name="line.156"></a>
+<FONT color="green">157</FONT>                    stack().push(Type.INT);<a name="line.157"></a>
+<FONT color="green">158</FONT>            }<a name="line.158"></a>
+<FONT color="green">159</FONT>    <a name="line.159"></a>
+<FONT color="green">160</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.160"></a>
+<FONT color="green">161</FONT>            public void visitASTORE(ASTORE o){<a name="line.161"></a>
+<FONT color="green">162</FONT>                    locals().set(o.getIndex(), stack().pop());<a name="line.162"></a>
+<FONT color="green">163</FONT>                    //System.err.println("TODO-DEBUG:       set LV '"+o.getIndex()+"' to '"+locals().get(o.getIndex())+"'.");<a name="line.163"></a>
+<FONT color="green">164</FONT>            }<a name="line.164"></a>
+<FONT color="green">165</FONT>    <a name="line.165"></a>
+<FONT color="green">166</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.166"></a>
+<FONT color="green">167</FONT>            public void visitATHROW(ATHROW o){<a name="line.167"></a>
+<FONT color="green">168</FONT>                    Type t = stack().pop();<a name="line.168"></a>
+<FONT color="green">169</FONT>                    stack().clear();<a name="line.169"></a>
+<FONT color="green">170</FONT>                    if (t.equals(Type.NULL))<a name="line.170"></a>
+<FONT color="green">171</FONT>                            stack().push(Type.getType("Ljava/lang/NullPointerException;"));<a name="line.171"></a>
+<FONT color="green">172</FONT>                    else<a name="line.172"></a>
+<FONT color="green">173</FONT>                            stack().push(t);<a name="line.173"></a>
+<FONT color="green">174</FONT>            }<a name="line.174"></a>
+<FONT color="green">175</FONT>    <a name="line.175"></a>
+<FONT color="green">176</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.176"></a>
+<FONT color="green">177</FONT>            public void visitBALOAD(BALOAD o){<a name="line.177"></a>
+<FONT color="green">178</FONT>                    stack().pop();<a name="line.178"></a>
+<FONT color="green">179</FONT>                    stack().pop();<a name="line.179"></a>
+<FONT color="green">180</FONT>                    stack().push(Type.INT);<a name="line.180"></a>
+<FONT color="green">181</FONT>            }<a name="line.181"></a>
+<FONT color="green">182</FONT>    <a name="line.182"></a>
+<FONT color="green">183</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.183"></a>
+<FONT color="green">184</FONT>            public void visitBASTORE(BASTORE o){<a name="line.184"></a>
+<FONT color="green">185</FONT>                    stack().pop();<a name="line.185"></a>
+<FONT color="green">186</FONT>                    stack().pop();<a name="line.186"></a>
+<FONT color="green">187</FONT>                    stack().pop();<a name="line.187"></a>
+<FONT color="green">188</FONT>            }<a name="line.188"></a>
+<FONT color="green">189</FONT>    <a name="line.189"></a>
+<FONT color="green">190</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.190"></a>
+<FONT color="green">191</FONT>            public void visitBIPUSH(BIPUSH o){<a name="line.191"></a>
+<FONT color="green">192</FONT>                    stack().push(Type.INT);<a name="line.192"></a>
+<FONT color="green">193</FONT>            }<a name="line.193"></a>
+<FONT color="green">194</FONT>    <a name="line.194"></a>
+<FONT color="green">195</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.195"></a>
+<FONT color="green">196</FONT>            public void visitCALOAD(CALOAD o){<a name="line.196"></a>
+<FONT color="green">197</FONT>                    stack().pop();<a name="line.197"></a>
+<FONT color="green">198</FONT>                    stack().pop();<a name="line.198"></a>
+<FONT color="green">199</FONT>                    stack().push(Type.INT);<a name="line.199"></a>
+<FONT color="green">200</FONT>            }<a name="line.200"></a>
+<FONT color="green">201</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.201"></a>
+<FONT color="green">202</FONT>            public void visitCASTORE(CASTORE o){<a name="line.202"></a>
+<FONT color="green">203</FONT>                    stack().pop();<a name="line.203"></a>
+<FONT color="green">204</FONT>                    stack().pop();<a name="line.204"></a>
+<FONT color="green">205</FONT>                    stack().pop();<a name="line.205"></a>
+<FONT color="green">206</FONT>            }<a name="line.206"></a>
+<FONT color="green">207</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.207"></a>
+<FONT color="green">208</FONT>            public void visitCHECKCAST(CHECKCAST o){<a name="line.208"></a>
+<FONT color="green">209</FONT>                    // It's possibly wrong to do so, but SUN's<a name="line.209"></a>
+<FONT color="green">210</FONT>                    // ByteCode verifier seems to do (only) this, too.<a name="line.210"></a>
+<FONT color="green">211</FONT>                    // TODO: One could use a sophisticated analysis here to check<a name="line.211"></a>
+<FONT color="green">212</FONT>                    //       if a type cannot possibly be cated to another and by<a name="line.212"></a>
+<FONT color="green">213</FONT>                    //       so doing predict the ClassCastException at run-time.<a name="line.213"></a>
+<FONT color="green">214</FONT>                    stack().pop();<a name="line.214"></a>
+<FONT color="green">215</FONT>                    stack().push(o.getType(cpg));<a name="line.215"></a>
+<FONT color="green">216</FONT>            }<a name="line.216"></a>
+<FONT color="green">217</FONT>    <a name="line.217"></a>
+<FONT color="green">218</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.218"></a>
+<FONT color="green">219</FONT>            public void visitD2F(D2F o){<a name="line.219"></a>
+<FONT color="green">220</FONT>                    stack().pop();<a name="line.220"></a>
+<FONT color="green">221</FONT>                    stack().push(Type.FLOAT);<a name="line.221"></a>
+<FONT color="green">222</FONT>            }<a name="line.222"></a>
+<FONT color="green">223</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.223"></a>
+<FONT color="green">224</FONT>            public void visitD2I(D2I o){<a name="line.224"></a>
+<FONT color="green">225</FONT>                    stack().pop();<a name="line.225"></a>
+<FONT color="green">226</FONT>                    stack().push(Type.INT);<a name="line.226"></a>
+<FONT color="green">227</FONT>            }<a name="line.227"></a>
+<FONT color="green">228</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.228"></a>
+<FONT color="green">229</FONT>            public void visitD2L(D2L o){<a name="line.229"></a>
+<FONT color="green">230</FONT>                    stack().pop();<a name="line.230"></a>
+<FONT color="green">231</FONT>                    stack().push(Type.LONG);<a name="line.231"></a>
+<FONT color="green">232</FONT>            }<a name="line.232"></a>
+<FONT color="green">233</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.233"></a>
+<FONT color="green">234</FONT>            public void visitDADD(DADD o){<a name="line.234"></a>
+<FONT color="green">235</FONT>                    stack().pop();<a name="line.235"></a>
+<FONT color="green">236</FONT>                    stack().pop();<a name="line.236"></a>
+<FONT color="green">237</FONT>                    stack().push(Type.DOUBLE);<a name="line.237"></a>
+<FONT color="green">238</FONT>            }<a name="line.238"></a>
+<FONT color="green">239</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.239"></a>
+<FONT color="green">240</FONT>            public void visitDALOAD(DALOAD o){<a name="line.240"></a>
+<FONT color="green">241</FONT>                    stack().pop();<a name="line.241"></a>
+<FONT color="green">242</FONT>                    stack().pop();<a name="line.242"></a>
+<FONT color="green">243</FONT>                    stack().push(Type.DOUBLE);<a name="line.243"></a>
+<FONT color="green">244</FONT>            }<a name="line.244"></a>
+<FONT color="green">245</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.245"></a>
+<FONT color="green">246</FONT>            public void visitDASTORE(DASTORE o){<a name="line.246"></a>
+<FONT color="green">247</FONT>                    stack().pop();<a name="line.247"></a>
+<FONT color="green">248</FONT>                    stack().pop();<a name="line.248"></a>
+<FONT color="green">249</FONT>                    stack().pop();<a name="line.249"></a>
+<FONT color="green">250</FONT>            }<a name="line.250"></a>
+<FONT color="green">251</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.251"></a>
+<FONT color="green">252</FONT>            public void visitDCMPG(DCMPG o){<a name="line.252"></a>
+<FONT color="green">253</FONT>                    stack().pop();<a name="line.253"></a>
+<FONT color="green">254</FONT>                    stack().pop();<a name="line.254"></a>
+<FONT color="green">255</FONT>                    stack().push(Type.INT);<a name="line.255"></a>
+<FONT color="green">256</FONT>            }<a name="line.256"></a>
+<FONT color="green">257</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.257"></a>
+<FONT color="green">258</FONT>            public void visitDCMPL(DCMPL o){<a name="line.258"></a>
+<FONT color="green">259</FONT>                    stack().pop();<a name="line.259"></a>
+<FONT color="green">260</FONT>                    stack().pop();<a name="line.260"></a>
+<FONT color="green">261</FONT>                    stack().push(Type.INT);<a name="line.261"></a>
+<FONT color="green">262</FONT>            }<a name="line.262"></a>
+<FONT color="green">263</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.263"></a>
+<FONT color="green">264</FONT>            public void visitDCONST(DCONST o){<a name="line.264"></a>
+<FONT color="green">265</FONT>                    stack().push(Type.DOUBLE);<a name="line.265"></a>
+<FONT color="green">266</FONT>            }<a name="line.266"></a>
+<FONT color="green">267</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.267"></a>
+<FONT color="green">268</FONT>            public void visitDDIV(DDIV o){<a name="line.268"></a>
+<FONT color="green">269</FONT>                    stack().pop();<a name="line.269"></a>
+<FONT color="green">270</FONT>                    stack().pop();<a name="line.270"></a>
+<FONT color="green">271</FONT>                    stack().push(Type.DOUBLE);<a name="line.271"></a>
+<FONT color="green">272</FONT>            }<a name="line.272"></a>
+<FONT color="green">273</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.273"></a>
+<FONT color="green">274</FONT>            public void visitDLOAD(DLOAD o){<a name="line.274"></a>
+<FONT color="green">275</FONT>                    stack().push(Type.DOUBLE);<a name="line.275"></a>
+<FONT color="green">276</FONT>            }<a name="line.276"></a>
+<FONT color="green">277</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.277"></a>
+<FONT color="green">278</FONT>            public void visitDMUL(DMUL o){<a name="line.278"></a>
+<FONT color="green">279</FONT>                    stack().pop();<a name="line.279"></a>
+<FONT color="green">280</FONT>                    stack().pop();<a name="line.280"></a>
+<FONT color="green">281</FONT>                    stack().push(Type.DOUBLE);<a name="line.281"></a>
+<FONT color="green">282</FONT>            }<a name="line.282"></a>
+<FONT color="green">283</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.283"></a>
+<FONT color="green">284</FONT>            public void visitDNEG(DNEG o){<a name="line.284"></a>
+<FONT color="green">285</FONT>                    stack().pop();<a name="line.285"></a>
+<FONT color="green">286</FONT>                    stack().push(Type.DOUBLE);<a name="line.286"></a>
+<FONT color="green">287</FONT>            }<a name="line.287"></a>
+<FONT color="green">288</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.288"></a>
+<FONT color="green">289</FONT>            public void visitDREM(DREM o){<a name="line.289"></a>
+<FONT color="green">290</FONT>                    stack().pop();<a name="line.290"></a>
+<FONT color="green">291</FONT>                    stack().pop();<a name="line.291"></a>
+<FONT color="green">292</FONT>                    stack().push(Type.DOUBLE);<a name="line.292"></a>
+<FONT color="green">293</FONT>            }<a name="line.293"></a>
+<FONT color="green">294</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.294"></a>
+<FONT color="green">295</FONT>            public void visitDRETURN(DRETURN o){<a name="line.295"></a>
+<FONT color="green">296</FONT>                    stack().pop();<a name="line.296"></a>
+<FONT color="green">297</FONT>            }<a name="line.297"></a>
+<FONT color="green">298</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.298"></a>
+<FONT color="green">299</FONT>            public void visitDSTORE(DSTORE o){<a name="line.299"></a>
+<FONT color="green">300</FONT>                    locals().set(o.getIndex(), stack().pop());<a name="line.300"></a>
+<FONT color="green">301</FONT>                    locals().set(o.getIndex()+1, Type.UNKNOWN);<a name="line.301"></a>
+<FONT color="green">302</FONT>            }<a name="line.302"></a>
+<FONT color="green">303</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.303"></a>
+<FONT color="green">304</FONT>            public void visitDSUB(DSUB o){<a name="line.304"></a>
+<FONT color="green">305</FONT>                    stack().pop();<a name="line.305"></a>
+<FONT color="green">306</FONT>                    stack().pop();<a name="line.306"></a>
+<FONT color="green">307</FONT>                    stack().push(Type.DOUBLE);<a name="line.307"></a>
+<FONT color="green">308</FONT>            }<a name="line.308"></a>
+<FONT color="green">309</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.309"></a>
+<FONT color="green">310</FONT>            public void visitDUP(DUP o){<a name="line.310"></a>
+<FONT color="green">311</FONT>                    Type t = stack().pop();<a name="line.311"></a>
+<FONT color="green">312</FONT>                    stack().push(t);<a name="line.312"></a>
+<FONT color="green">313</FONT>                    stack().push(t);<a name="line.313"></a>
+<FONT color="green">314</FONT>            }<a name="line.314"></a>
+<FONT color="green">315</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.315"></a>
+<FONT color="green">316</FONT>            public void visitDUP_X1(DUP_X1 o){<a name="line.316"></a>
+<FONT color="green">317</FONT>                    Type w1 = stack().pop();<a name="line.317"></a>
+<FONT color="green">318</FONT>                    Type w2 = stack().pop();<a name="line.318"></a>
+<FONT color="green">319</FONT>                    stack().push(w1);<a name="line.319"></a>
+<FONT color="green">320</FONT>                    stack().push(w2);<a name="line.320"></a>
+<FONT color="green">321</FONT>                    stack().push(w1);<a name="line.321"></a>
+<FONT color="green">322</FONT>            }<a name="line.322"></a>
+<FONT color="green">323</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.323"></a>
+<FONT color="green">324</FONT>            public void visitDUP_X2(DUP_X2 o){<a name="line.324"></a>
+<FONT color="green">325</FONT>                    Type w1 = stack().pop();<a name="line.325"></a>
+<FONT color="green">326</FONT>                    Type w2 = stack().pop();<a name="line.326"></a>
+<FONT color="green">327</FONT>                    if (w2.getSize() == 2){<a name="line.327"></a>
+<FONT color="green">328</FONT>                            stack().push(w1);<a name="line.328"></a>
+<FONT color="green">329</FONT>                            stack().push(w2);<a name="line.329"></a>
+<FONT color="green">330</FONT>                            stack().push(w1);<a name="line.330"></a>
+<FONT color="green">331</FONT>                    }<a name="line.331"></a>
+<FONT color="green">332</FONT>                    else{<a name="line.332"></a>
+<FONT color="green">333</FONT>                            Type w3 = stack().pop();<a name="line.333"></a>
+<FONT color="green">334</FONT>                            stack().push(w1);<a name="line.334"></a>
+<FONT color="green">335</FONT>                            stack().push(w3);<a name="line.335"></a>
+<FONT color="green">336</FONT>                            stack().push(w2);<a name="line.336"></a>
+<FONT color="green">337</FONT>                            stack().push(w1);<a name="line.337"></a>
+<FONT color="green">338</FONT>                    }<a name="line.338"></a>
+<FONT color="green">339</FONT>            }<a name="line.339"></a>
+<FONT color="green">340</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.340"></a>
+<FONT color="green">341</FONT>            public void visitDUP2(DUP2 o){<a name="line.341"></a>
+<FONT color="green">342</FONT>                    Type t = stack().pop();<a name="line.342"></a>
+<FONT color="green">343</FONT>                    if (t.getSize() == 2){<a name="line.343"></a>
+<FONT color="green">344</FONT>                            stack().push(t);<a name="line.344"></a>
+<FONT color="green">345</FONT>                            stack().push(t);<a name="line.345"></a>
+<FONT color="green">346</FONT>                    }<a name="line.346"></a>
+<FONT color="green">347</FONT>                    else{ // t.getSize() is 1<a name="line.347"></a>
+<FONT color="green">348</FONT>                            Type u = stack().pop();<a name="line.348"></a>
+<FONT color="green">349</FONT>                            stack().push(u);<a name="line.349"></a>
+<FONT color="green">350</FONT>                            stack().push(t);<a name="line.350"></a>
+<FONT color="green">351</FONT>                            stack().push(u);<a name="line.351"></a>
+<FONT color="green">352</FONT>                            stack().push(t);<a name="line.352"></a>
+<FONT color="green">353</FONT>                    }<a name="line.353"></a>
+<FONT color="green">354</FONT>            }<a name="line.354"></a>
+<FONT color="green">355</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.355"></a>
+<FONT color="green">356</FONT>            public void visitDUP2_X1(DUP2_X1 o){<a name="line.356"></a>
+<FONT color="green">357</FONT>                    Type t = stack().pop();<a name="line.357"></a>
+<FONT color="green">358</FONT>                    if (t.getSize() == 2){<a name="line.358"></a>
+<FONT color="green">359</FONT>                            Type u = stack().pop();<a name="line.359"></a>
+<FONT color="green">360</FONT>                            stack().push(t);<a name="line.360"></a>
+<FONT color="green">361</FONT>                            stack().push(u);<a name="line.361"></a>
+<FONT color="green">362</FONT>                            stack().push(t);<a name="line.362"></a>
+<FONT color="green">363</FONT>                    }<a name="line.363"></a>
+<FONT color="green">364</FONT>                    else{ //t.getSize() is1<a name="line.364"></a>
+<FONT color="green">365</FONT>                            Type u = stack().pop();<a name="line.365"></a>
+<FONT color="green">366</FONT>                            Type v = stack().pop();<a name="line.366"></a>
+<FONT color="green">367</FONT>                            stack().push(u);<a name="line.367"></a>
+<FONT color="green">368</FONT>                            stack().push(t);<a name="line.368"></a>
+<FONT color="green">369</FONT>                            stack().push(v);<a name="line.369"></a>
+<FONT color="green">370</FONT>                            stack().push(u);<a name="line.370"></a>
+<FONT color="green">371</FONT>                            stack().push(t);<a name="line.371"></a>
+<FONT color="green">372</FONT>                    }<a name="line.372"></a>
+<FONT color="green">373</FONT>            }<a name="line.373"></a>
+<FONT color="green">374</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.374"></a>
+<FONT color="green">375</FONT>            public void visitDUP2_X2(DUP2_X2 o){<a name="line.375"></a>
+<FONT color="green">376</FONT>                    Type t = stack().pop();<a name="line.376"></a>
+<FONT color="green">377</FONT>                    if (t.getSize() == 2){<a name="line.377"></a>
+<FONT color="green">378</FONT>                            Type u = stack().pop();<a name="line.378"></a>
+<FONT color="green">379</FONT>                            if (u.getSize() == 2){<a name="line.379"></a>
+<FONT color="green">380</FONT>                                    stack().push(t);<a name="line.380"></a>
+<FONT color="green">381</FONT>                                    stack().push(u);<a name="line.381"></a>
+<FONT color="green">382</FONT>                                    stack().push(t);<a name="line.382"></a>
+<FONT color="green">383</FONT>                            }else{<a name="line.383"></a>
+<FONT color="green">384</FONT>                                    Type v = stack().pop();<a name="line.384"></a>
+<FONT color="green">385</FONT>                                    stack().push(t);<a name="line.385"></a>
+<FONT color="green">386</FONT>                                    stack().push(v);<a name="line.386"></a>
+<FONT color="green">387</FONT>                                    stack().push(u);<a name="line.387"></a>
+<FONT color="green">388</FONT>                                    stack().push(t);<a name="line.388"></a>
+<FONT color="green">389</FONT>                            }<a name="line.389"></a>
+<FONT color="green">390</FONT>                    }<a name="line.390"></a>
+<FONT color="green">391</FONT>                    else{ //t.getSize() is 1<a name="line.391"></a>
+<FONT color="green">392</FONT>                            Type u = stack().pop();<a name="line.392"></a>
+<FONT color="green">393</FONT>                            Type v = stack().pop();<a name="line.393"></a>
+<FONT color="green">394</FONT>                            if (v.getSize() == 2){<a name="line.394"></a>
+<FONT color="green">395</FONT>                                    stack().push(u);<a name="line.395"></a>
+<FONT color="green">396</FONT>                                    stack().push(t);<a name="line.396"></a>
+<FONT color="green">397</FONT>                                    stack().push(v);<a name="line.397"></a>
+<FONT color="green">398</FONT>                                    stack().push(u);<a name="line.398"></a>
+<FONT color="green">399</FONT>                                    stack().push(t);<a name="line.399"></a>
+<FONT color="green">400</FONT>                            }else{<a name="line.400"></a>
+<FONT color="green">401</FONT>                                    Type w = stack().pop();<a name="line.401"></a>
+<FONT color="green">402</FONT>                                    stack().push(u);<a name="line.402"></a>
+<FONT color="green">403</FONT>                                    stack().push(t);<a name="line.403"></a>
+<FONT color="green">404</FONT>                                    stack().push(w);<a name="line.404"></a>
+<FONT color="green">405</FONT>                                    stack().push(v);<a name="line.405"></a>
+<FONT color="green">406</FONT>                                    stack().push(u);<a name="line.406"></a>
+<FONT color="green">407</FONT>                                    stack().push(t);<a name="line.407"></a>
+<FONT color="green">408</FONT>                            }<a name="line.408"></a>
+<FONT color="green">409</FONT>                    }<a name="line.409"></a>
+<FONT color="green">410</FONT>            }<a name="line.410"></a>
+<FONT color="green">411</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.411"></a>
+<FONT color="green">412</FONT>            public void visitF2D(F2D o){<a name="line.412"></a>
+<FONT color="green">413</FONT>                    stack().pop();<a name="line.413"></a>
+<FONT color="green">414</FONT>                    stack().push(Type.DOUBLE);<a name="line.414"></a>
+<FONT color="green">415</FONT>            }<a name="line.415"></a>
+<FONT color="green">416</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.416"></a>
+<FONT color="green">417</FONT>            public void visitF2I(F2I o){<a name="line.417"></a>
+<FONT color="green">418</FONT>                    stack().pop();<a name="line.418"></a>
+<FONT color="green">419</FONT>                    stack().push(Type.INT);<a name="line.419"></a>
+<FONT color="green">420</FONT>            }<a name="line.420"></a>
+<FONT color="green">421</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.421"></a>
+<FONT color="green">422</FONT>            public void visitF2L(F2L o){<a name="line.422"></a>
+<FONT color="green">423</FONT>                    stack().pop();<a name="line.423"></a>
+<FONT color="green">424</FONT>                    stack().push(Type.LONG);<a name="line.424"></a>
+<FONT color="green">425</FONT>            }<a name="line.425"></a>
+<FONT color="green">426</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.426"></a>
+<FONT color="green">427</FONT>            public void visitFADD(FADD o){<a name="line.427"></a>
+<FONT color="green">428</FONT>                    stack().pop();<a name="line.428"></a>
+<FONT color="green">429</FONT>                    stack().pop();<a name="line.429"></a>
+<FONT color="green">430</FONT>                    stack().push(Type.FLOAT);<a name="line.430"></a>
+<FONT color="green">431</FONT>            }<a name="line.431"></a>
+<FONT color="green">432</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.432"></a>
+<FONT color="green">433</FONT>            public void visitFALOAD(FALOAD o){<a name="line.433"></a>
+<FONT color="green">434</FONT>                    stack().pop();<a name="line.434"></a>
+<FONT color="green">435</FONT>                    stack().pop();<a name="line.435"></a>
+<FONT color="green">436</FONT>                    stack().push(Type.FLOAT);<a name="line.436"></a>
+<FONT color="green">437</FONT>            }<a name="line.437"></a>
+<FONT color="green">438</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.438"></a>
+<FONT color="green">439</FONT>            public void visitFASTORE(FASTORE o){<a name="line.439"></a>
+<FONT color="green">440</FONT>                    stack().pop();<a name="line.440"></a>
+<FONT color="green">441</FONT>                    stack().pop();<a name="line.441"></a>
+<FONT color="green">442</FONT>                    stack().pop();<a name="line.442"></a>
+<FONT color="green">443</FONT>            }<a name="line.443"></a>
+<FONT color="green">444</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.444"></a>
+<FONT color="green">445</FONT>            public void visitFCMPG(FCMPG o){<a name="line.445"></a>
+<FONT color="green">446</FONT>                    stack().pop();<a name="line.446"></a>
+<FONT color="green">447</FONT>                    stack().pop();<a name="line.447"></a>
+<FONT color="green">448</FONT>                    stack().push(Type.INT);<a name="line.448"></a>
+<FONT color="green">449</FONT>            }<a name="line.449"></a>
+<FONT color="green">450</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.450"></a>
+<FONT color="green">451</FONT>            public void visitFCMPL(FCMPL o){<a name="line.451"></a>
+<FONT color="green">452</FONT>                    stack().pop();<a name="line.452"></a>
+<FONT color="green">453</FONT>                    stack().pop();<a name="line.453"></a>
+<FONT color="green">454</FONT>                    stack().push(Type.INT);<a name="line.454"></a>
+<FONT color="green">455</FONT>            }<a name="line.455"></a>
+<FONT color="green">456</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.456"></a>
+<FONT color="green">457</FONT>            public void visitFCONST(FCONST o){<a name="line.457"></a>
+<FONT color="green">458</FONT>                    stack().push(Type.FLOAT);<a name="line.458"></a>
+<FONT color="green">459</FONT>            }<a name="line.459"></a>
+<FONT color="green">460</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.460"></a>
+<FONT color="green">461</FONT>            public void visitFDIV(FDIV o){<a name="line.461"></a>
+<FONT color="green">462</FONT>                    stack().pop();<a name="line.462"></a>
+<FONT color="green">463</FONT>                    stack().pop();<a name="line.463"></a>
+<FONT color="green">464</FONT>                    stack().push(Type.FLOAT);<a name="line.464"></a>
+<FONT color="green">465</FONT>            }<a name="line.465"></a>
+<FONT color="green">466</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.466"></a>
+<FONT color="green">467</FONT>            public void visitFLOAD(FLOAD o){<a name="line.467"></a>
+<FONT color="green">468</FONT>                    stack().push(Type.FLOAT);<a name="line.468"></a>
+<FONT color="green">469</FONT>            }<a name="line.469"></a>
+<FONT color="green">470</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.470"></a>
+<FONT color="green">471</FONT>            public void visitFMUL(FMUL o){<a name="line.471"></a>
+<FONT color="green">472</FONT>                    stack().pop();<a name="line.472"></a>
+<FONT color="green">473</FONT>                    stack().pop();<a name="line.473"></a>
+<FONT color="green">474</FONT>                    stack().push(Type.FLOAT);<a name="line.474"></a>
+<FONT color="green">475</FONT>            }<a name="line.475"></a>
+<FONT color="green">476</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.476"></a>
+<FONT color="green">477</FONT>            public void visitFNEG(FNEG o){<a name="line.477"></a>
+<FONT color="green">478</FONT>                    stack().pop();<a name="line.478"></a>
+<FONT color="green">479</FONT>                    stack().push(Type.FLOAT);<a name="line.479"></a>
+<FONT color="green">480</FONT>            }<a name="line.480"></a>
+<FONT color="green">481</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.481"></a>
+<FONT color="green">482</FONT>            public void visitFREM(FREM o){<a name="line.482"></a>
+<FONT color="green">483</FONT>                    stack().pop();<a name="line.483"></a>
+<FONT color="green">484</FONT>                    stack().pop();<a name="line.484"></a>
+<FONT color="green">485</FONT>                    stack().push(Type.FLOAT);<a name="line.485"></a>
+<FONT color="green">486</FONT>            }<a name="line.486"></a>
+<FONT color="green">487</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.487"></a>
+<FONT color="green">488</FONT>            public void visitFRETURN(FRETURN o){<a name="line.488"></a>
+<FONT color="green">489</FONT>                    stack().pop();<a name="line.489"></a>
+<FONT color="green">490</FONT>            }<a name="line.490"></a>
+<FONT color="green">491</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.491"></a>
+<FONT color="green">492</FONT>            public void visitFSTORE(FSTORE o){<a name="line.492"></a>
+<FONT color="green">493</FONT>                    locals().set(o.getIndex(), stack().pop());<a name="line.493"></a>
+<FONT color="green">494</FONT>            }<a name="line.494"></a>
+<FONT color="green">495</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.495"></a>
+<FONT color="green">496</FONT>            public void visitFSUB(FSUB o){<a name="line.496"></a>
+<FONT color="green">497</FONT>                    stack().pop();<a name="line.497"></a>
+<FONT color="green">498</FONT>                    stack().pop();<a name="line.498"></a>
+<FONT color="green">499</FONT>                    stack().push(Type.FLOAT);<a name="line.499"></a>
+<FONT color="green">500</FONT>            }<a name="line.500"></a>
+<FONT color="green">501</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.501"></a>
+<FONT color="green">502</FONT>            public void visitGETFIELD(GETFIELD o){<a name="line.502"></a>
+<FONT color="green">503</FONT>                    stack().pop();<a name="line.503"></a>
+<FONT color="green">504</FONT>                    Type t = o.getFieldType(cpg);<a name="line.504"></a>
+<FONT color="green">505</FONT>                    if (    t.equals(Type.BOOLEAN)  ||<a name="line.505"></a>
+<FONT color="green">506</FONT>                                            t.equals(Type.CHAR)                     ||<a name="line.506"></a>
+<FONT color="green">507</FONT>                                            t.equals(Type.BYTE)             ||<a name="line.507"></a>
+<FONT color="green">508</FONT>                                            t.equals(Type.SHORT)            )<a name="line.508"></a>
+<FONT color="green">509</FONT>                            t = Type.INT;<a name="line.509"></a>
+<FONT color="green">510</FONT>                    stack().push(t);<a name="line.510"></a>
+<FONT color="green">511</FONT>            }<a name="line.511"></a>
+<FONT color="green">512</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.512"></a>
+<FONT color="green">513</FONT>            public void visitGETSTATIC(GETSTATIC o){<a name="line.513"></a>
+<FONT color="green">514</FONT>                    Type t = o.getFieldType(cpg);<a name="line.514"></a>
+<FONT color="green">515</FONT>                    if (    t.equals(Type.BOOLEAN)  ||<a name="line.515"></a>
+<FONT color="green">516</FONT>                                            t.equals(Type.CHAR)                     ||<a name="line.516"></a>
+<FONT color="green">517</FONT>                                            t.equals(Type.BYTE)             ||<a name="line.517"></a>
+<FONT color="green">518</FONT>                                            t.equals(Type.SHORT)            )<a name="line.518"></a>
+<FONT color="green">519</FONT>                            t = Type.INT;<a name="line.519"></a>
+<FONT color="green">520</FONT>                    stack().push(t);<a name="line.520"></a>
+<FONT color="green">521</FONT>            }<a name="line.521"></a>
+<FONT color="green">522</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.522"></a>
+<FONT color="green">523</FONT>            public void visitGOTO(GOTO o){<a name="line.523"></a>
+<FONT color="green">524</FONT>                    // no stack changes.<a name="line.524"></a>
+<FONT color="green">525</FONT>            }<a name="line.525"></a>
+<FONT color="green">526</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.526"></a>
+<FONT color="green">527</FONT>            public void visitGOTO_W(GOTO_W o){<a name="line.527"></a>
+<FONT color="green">528</FONT>                    // no stack changes.<a name="line.528"></a>
+<FONT color="green">529</FONT>            }<a name="line.529"></a>
+<FONT color="green">530</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.530"></a>
+<FONT color="green">531</FONT>            public void visitI2B(I2B o){<a name="line.531"></a>
+<FONT color="green">532</FONT>                    stack().pop();<a name="line.532"></a>
+<FONT color="green">533</FONT>                    stack().push(Type.INT);<a name="line.533"></a>
+<FONT color="green">534</FONT>            }<a name="line.534"></a>
+<FONT color="green">535</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.535"></a>
+<FONT color="green">536</FONT>            public void visitI2C(I2C o){<a name="line.536"></a>
+<FONT color="green">537</FONT>                    stack().pop();<a name="line.537"></a>
+<FONT color="green">538</FONT>                    stack().push(Type.INT);<a name="line.538"></a>
+<FONT color="green">539</FONT>            }<a name="line.539"></a>
+<FONT color="green">540</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.540"></a>
+<FONT color="green">541</FONT>            public void visitI2D(I2D o){<a name="line.541"></a>
+<FONT color="green">542</FONT>                    stack().pop();<a name="line.542"></a>
+<FONT color="green">543</FONT>                    stack().push(Type.DOUBLE);<a name="line.543"></a>
+<FONT color="green">544</FONT>            }<a name="line.544"></a>
+<FONT color="green">545</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.545"></a>
+<FONT color="green">546</FONT>            public void visitI2F(I2F o){<a name="line.546"></a>
+<FONT color="green">547</FONT>                    stack().pop();<a name="line.547"></a>
+<FONT color="green">548</FONT>                    stack().push(Type.FLOAT);<a name="line.548"></a>
+<FONT color="green">549</FONT>            }<a name="line.549"></a>
+<FONT color="green">550</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.550"></a>
+<FONT color="green">551</FONT>            public void visitI2L(I2L o){<a name="line.551"></a>
+<FONT color="green">552</FONT>                    stack().pop();<a name="line.552"></a>
+<FONT color="green">553</FONT>                    stack().push(Type.LONG);<a name="line.553"></a>
+<FONT color="green">554</FONT>            }<a name="line.554"></a>
+<FONT color="green">555</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.555"></a>
+<FONT color="green">556</FONT>            public void visitI2S(I2S o){<a name="line.556"></a>
+<FONT color="green">557</FONT>                    stack().pop();<a name="line.557"></a>
+<FONT color="green">558</FONT>                    stack().push(Type.INT);<a name="line.558"></a>
+<FONT color="green">559</FONT>            }<a name="line.559"></a>
+<FONT color="green">560</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.560"></a>
+<FONT color="green">561</FONT>            public void visitIADD(IADD o){<a name="line.561"></a>
+<FONT color="green">562</FONT>                    stack().pop();<a name="line.562"></a>
+<FONT color="green">563</FONT>                    stack().pop();<a name="line.563"></a>
+<FONT color="green">564</FONT>                    stack().push(Type.INT);<a name="line.564"></a>
+<FONT color="green">565</FONT>            }<a name="line.565"></a>
+<FONT color="green">566</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.566"></a>
+<FONT color="green">567</FONT>            public void visitIALOAD(IALOAD o){<a name="line.567"></a>
+<FONT color="green">568</FONT>                    stack().pop();<a name="line.568"></a>
+<FONT color="green">569</FONT>                    stack().pop();<a name="line.569"></a>
+<FONT color="green">570</FONT>                    stack().push(Type.INT);<a name="line.570"></a>
+<FONT color="green">571</FONT>            }<a name="line.571"></a>
+<FONT color="green">572</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.572"></a>
+<FONT color="green">573</FONT>            public void visitIAND(IAND o){<a name="line.573"></a>
+<FONT color="green">574</FONT>                    stack().pop();<a name="line.574"></a>
+<FONT color="green">575</FONT>                    stack().pop();<a name="line.575"></a>
+<FONT color="green">576</FONT>                    stack().push(Type.INT);<a name="line.576"></a>
+<FONT color="green">577</FONT>            }<a name="line.577"></a>
+<FONT color="green">578</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.578"></a>
+<FONT color="green">579</FONT>            public void visitIASTORE(IASTORE o){<a name="line.579"></a>
+<FONT color="green">580</FONT>                    stack().pop();<a name="line.580"></a>
+<FONT color="green">581</FONT>                    stack().pop();<a name="line.581"></a>
+<FONT color="green">582</FONT>                    stack().pop();<a name="line.582"></a>
+<FONT color="green">583</FONT>            }<a name="line.583"></a>
+<FONT color="green">584</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.584"></a>
+<FONT color="green">585</FONT>            public void visitICONST(ICONST o){<a name="line.585"></a>
+<FONT color="green">586</FONT>                    stack().push(Type.INT);<a name="line.586"></a>
+<FONT color="green">587</FONT>            }<a name="line.587"></a>
+<FONT color="green">588</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.588"></a>
+<FONT color="green">589</FONT>            public void visitIDIV(IDIV o){<a name="line.589"></a>
+<FONT color="green">590</FONT>                    stack().pop();<a name="line.590"></a>
+<FONT color="green">591</FONT>                    stack().pop();<a name="line.591"></a>
+<FONT color="green">592</FONT>                    stack().push(Type.INT);<a name="line.592"></a>
+<FONT color="green">593</FONT>            }<a name="line.593"></a>
+<FONT color="green">594</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.594"></a>
+<FONT color="green">595</FONT>            public void visitIF_ACMPEQ(IF_ACMPEQ o){<a name="line.595"></a>
+<FONT color="green">596</FONT>                    stack().pop();<a name="line.596"></a>
+<FONT color="green">597</FONT>                    stack().pop();<a name="line.597"></a>
+<FONT color="green">598</FONT>            }<a name="line.598"></a>
+<FONT color="green">599</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.599"></a>
+<FONT color="green">600</FONT>            public void visitIF_ACMPNE(IF_ACMPNE o){<a name="line.600"></a>
+<FONT color="green">601</FONT>                    stack().pop();<a name="line.601"></a>
+<FONT color="green">602</FONT>                    stack().pop();<a name="line.602"></a>
+<FONT color="green">603</FONT>            }<a name="line.603"></a>
+<FONT color="green">604</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.604"></a>
+<FONT color="green">605</FONT>            public void visitIF_ICMPEQ(IF_ICMPEQ o){<a name="line.605"></a>
+<FONT color="green">606</FONT>                    stack().pop();<a name="line.606"></a>
+<FONT color="green">607</FONT>                    stack().pop();<a name="line.607"></a>
+<FONT color="green">608</FONT>            }<a name="line.608"></a>
+<FONT color="green">609</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.609"></a>
+<FONT color="green">610</FONT>            public void visitIF_ICMPGE(IF_ICMPGE o){<a name="line.610"></a>
+<FONT color="green">611</FONT>                    stack().pop();<a name="line.611"></a>
+<FONT color="green">612</FONT>                    stack().pop();<a name="line.612"></a>
+<FONT color="green">613</FONT>            }<a name="line.613"></a>
+<FONT color="green">614</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.614"></a>
+<FONT color="green">615</FONT>            public void visitIF_ICMPGT(IF_ICMPGT o){<a name="line.615"></a>
+<FONT color="green">616</FONT>                    stack().pop();<a name="line.616"></a>
+<FONT color="green">617</FONT>                    stack().pop();<a name="line.617"></a>
+<FONT color="green">618</FONT>            }<a name="line.618"></a>
+<FONT color="green">619</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.619"></a>
+<FONT color="green">620</FONT>            public void visitIF_ICMPLE(IF_ICMPLE o){<a name="line.620"></a>
+<FONT color="green">621</FONT>                    stack().pop();<a name="line.621"></a>
+<FONT color="green">622</FONT>                    stack().pop();<a name="line.622"></a>
+<FONT color="green">623</FONT>            }<a name="line.623"></a>
+<FONT color="green">624</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.624"></a>
+<FONT color="green">625</FONT>            public void visitIF_ICMPLT(IF_ICMPLT o){<a name="line.625"></a>
+<FONT color="green">626</FONT>                    stack().pop();<a name="line.626"></a>
+<FONT color="green">627</FONT>                    stack().pop();<a name="line.627"></a>
+<FONT color="green">628</FONT>            }<a name="line.628"></a>
+<FONT color="green">629</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.629"></a>
+<FONT color="green">630</FONT>            public void visitIF_ICMPNE(IF_ICMPNE o){<a name="line.630"></a>
+<FONT color="green">631</FONT>                    stack().pop();<a name="line.631"></a>
+<FONT color="green">632</FONT>                    stack().pop();<a name="line.632"></a>
+<FONT color="green">633</FONT>            }<a name="line.633"></a>
+<FONT color="green">634</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.634"></a>
+<FONT color="green">635</FONT>            public void visitIFEQ(IFEQ o){<a name="line.635"></a>
+<FONT color="green">636</FONT>                    stack().pop();<a name="line.636"></a>
+<FONT color="green">637</FONT>            }<a name="line.637"></a>
+<FONT color="green">638</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.638"></a>
+<FONT color="green">639</FONT>            public void visitIFGE(IFGE o){<a name="line.639"></a>
+<FONT color="green">640</FONT>                    stack().pop();<a name="line.640"></a>
+<FONT color="green">641</FONT>            }<a name="line.641"></a>
+<FONT color="green">642</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.642"></a>
+<FONT color="green">643</FONT>            public void visitIFGT(IFGT o){<a name="line.643"></a>
+<FONT color="green">644</FONT>                    stack().pop();<a name="line.644"></a>
+<FONT color="green">645</FONT>            }<a name="line.645"></a>
+<FONT color="green">646</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.646"></a>
+<FONT color="green">647</FONT>            public void visitIFLE(IFLE o){<a name="line.647"></a>
+<FONT color="green">648</FONT>                    stack().pop();<a name="line.648"></a>
+<FONT color="green">649</FONT>            }<a name="line.649"></a>
+<FONT color="green">650</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.650"></a>
+<FONT color="green">651</FONT>            public void visitIFLT(IFLT o){<a name="line.651"></a>
+<FONT color="green">652</FONT>                    stack().pop();<a name="line.652"></a>
+<FONT color="green">653</FONT>            }<a name="line.653"></a>
+<FONT color="green">654</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.654"></a>
+<FONT color="green">655</FONT>            public void visitIFNE(IFNE o){<a name="line.655"></a>
+<FONT color="green">656</FONT>                    stack().pop();<a name="line.656"></a>
+<FONT color="green">657</FONT>            }<a name="line.657"></a>
+<FONT color="green">658</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.658"></a>
+<FONT color="green">659</FONT>            public void visitIFNONNULL(IFNONNULL o){<a name="line.659"></a>
+<FONT color="green">660</FONT>                    stack().pop();<a name="line.660"></a>
+<FONT color="green">661</FONT>            }<a name="line.661"></a>
+<FONT color="green">662</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.662"></a>
+<FONT color="green">663</FONT>            public void visitIFNULL(IFNULL o){<a name="line.663"></a>
+<FONT color="green">664</FONT>                    stack().pop();<a name="line.664"></a>
+<FONT color="green">665</FONT>            }<a name="line.665"></a>
+<FONT color="green">666</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.666"></a>
+<FONT color="green">667</FONT>            public void visitIINC(IINC o){<a name="line.667"></a>
+<FONT color="green">668</FONT>                    // stack is not changed.<a name="line.668"></a>
+<FONT color="green">669</FONT>            }<a name="line.669"></a>
+<FONT color="green">670</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.670"></a>
+<FONT color="green">671</FONT>            public void visitILOAD(ILOAD o){<a name="line.671"></a>
+<FONT color="green">672</FONT>                    stack().push(Type.INT);<a name="line.672"></a>
+<FONT color="green">673</FONT>            }<a name="line.673"></a>
+<FONT color="green">674</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.674"></a>
+<FONT color="green">675</FONT>            public void visitIMUL(IMUL o){<a name="line.675"></a>
+<FONT color="green">676</FONT>                    stack().pop();<a name="line.676"></a>
+<FONT color="green">677</FONT>                    stack().pop();<a name="line.677"></a>
+<FONT color="green">678</FONT>                    stack().push(Type.INT);<a name="line.678"></a>
+<FONT color="green">679</FONT>            }<a name="line.679"></a>
+<FONT color="green">680</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.680"></a>
+<FONT color="green">681</FONT>            public void visitINEG(INEG o){<a name="line.681"></a>
+<FONT color="green">682</FONT>                    stack().pop();<a name="line.682"></a>
+<FONT color="green">683</FONT>                    stack().push(Type.INT);<a name="line.683"></a>
+<FONT color="green">684</FONT>            }<a name="line.684"></a>
+<FONT color="green">685</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.685"></a>
+<FONT color="green">686</FONT>            public void visitINSTANCEOF(INSTANCEOF o){<a name="line.686"></a>
+<FONT color="green">687</FONT>                    stack().pop();<a name="line.687"></a>
+<FONT color="green">688</FONT>                    stack().push(Type.INT);<a name="line.688"></a>
+<FONT color="green">689</FONT>            }<a name="line.689"></a>
+<FONT color="green">690</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.690"></a>
+<FONT color="green">691</FONT>            public void visitINVOKEINTERFACE(INVOKEINTERFACE o){<a name="line.691"></a>
+<FONT color="green">692</FONT>                    stack().pop();  //objectref<a name="line.692"></a>
+<FONT color="green">693</FONT>                    for (int i=0; i&lt;o.getArgumentTypes(cpg).length; i++){<a name="line.693"></a>
+<FONT color="green">694</FONT>                            stack().pop();<a name="line.694"></a>
+<FONT color="green">695</FONT>                    }<a name="line.695"></a>
+<FONT color="green">696</FONT>                    // We are sure the invoked method will xRETURN eventually<a name="line.696"></a>
+<FONT color="green">697</FONT>                    // We simulate xRETURNs functionality here because we<a name="line.697"></a>
+<FONT color="green">698</FONT>                    // don't really "jump into" and simulate the invoked<a name="line.698"></a>
+<FONT color="green">699</FONT>                    // method.<a name="line.699"></a>
+<FONT color="green">700</FONT>                    if (o.getReturnType(cpg) != Type.VOID){<a name="line.700"></a>
+<FONT color="green">701</FONT>                            Type t = o.getReturnType(cpg);<a name="line.701"></a>
+<FONT color="green">702</FONT>                            if (    t.equals(Type.BOOLEAN)  ||<a name="line.702"></a>
+<FONT color="green">703</FONT>                                                    t.equals(Type.CHAR)                     ||<a name="line.703"></a>
+<FONT color="green">704</FONT>                                                    t.equals(Type.BYTE)             ||<a name="line.704"></a>
+<FONT color="green">705</FONT>                                                    t.equals(Type.SHORT)            )<a name="line.705"></a>
+<FONT color="green">706</FONT>                                    t = Type.INT;<a name="line.706"></a>
+<FONT color="green">707</FONT>                            stack().push(t);<a name="line.707"></a>
+<FONT color="green">708</FONT>                    }<a name="line.708"></a>
+<FONT color="green">709</FONT>            }<a name="line.709"></a>
+<FONT color="green">710</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.710"></a>
+<FONT color="green">711</FONT>            public void visitINVOKESPECIAL(INVOKESPECIAL o){<a name="line.711"></a>
+<FONT color="green">712</FONT>                    if (o.getMethodName(cpg).equals(Constants.CONSTRUCTOR_NAME)){<a name="line.712"></a>
+<FONT color="green">713</FONT>                            UninitializedObjectType t = (UninitializedObjectType) stack().peek(o.getArgumentTypes(cpg).length);<a name="line.713"></a>
+<FONT color="green">714</FONT>                            if (t == Frame._this){  <a name="line.714"></a>
+<FONT color="green">715</FONT>                                    Frame._this = null;<a name="line.715"></a>
+<FONT color="green">716</FONT>                            }<a name="line.716"></a>
+<FONT color="green">717</FONT>                            stack().initializeObject(t);<a name="line.717"></a>
+<FONT color="green">718</FONT>                            locals().initializeObject(t);<a name="line.718"></a>
+<FONT color="green">719</FONT>                    }<a name="line.719"></a>
+<FONT color="green">720</FONT>                    stack().pop();  //objectref<a name="line.720"></a>
+<FONT color="green">721</FONT>                    for (int i=0; i&lt;o.getArgumentTypes(cpg).length; i++){<a name="line.721"></a>
+<FONT color="green">722</FONT>                            stack().pop();<a name="line.722"></a>
+<FONT color="green">723</FONT>                    }<a name="line.723"></a>
+<FONT color="green">724</FONT>                    // We are sure the invoked method will xRETURN eventually<a name="line.724"></a>
+<FONT color="green">725</FONT>                    // We simulate xRETURNs functionality here because we<a name="line.725"></a>
+<FONT color="green">726</FONT>                    // don't really "jump into" and simulate the invoked<a name="line.726"></a>
+<FONT color="green">727</FONT>                    // method.<a name="line.727"></a>
+<FONT color="green">728</FONT>                    if (o.getReturnType(cpg) != Type.VOID){<a name="line.728"></a>
+<FONT color="green">729</FONT>                            Type t = o.getReturnType(cpg);<a name="line.729"></a>
+<FONT color="green">730</FONT>                            if (    t.equals(Type.BOOLEAN)  ||<a name="line.730"></a>
+<FONT color="green">731</FONT>                                                    t.equals(Type.CHAR)                     ||<a name="line.731"></a>
+<FONT color="green">732</FONT>                                                    t.equals(Type.BYTE)             ||<a name="line.732"></a>
+<FONT color="green">733</FONT>                                                    t.equals(Type.SHORT)            )<a name="line.733"></a>
+<FONT color="green">734</FONT>                                    t = Type.INT;<a name="line.734"></a>
+<FONT color="green">735</FONT>                            stack().push(t);<a name="line.735"></a>
+<FONT color="green">736</FONT>                    }<a name="line.736"></a>
+<FONT color="green">737</FONT>            }<a name="line.737"></a>
+<FONT color="green">738</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.738"></a>
+<FONT color="green">739</FONT>            public void visitINVOKESTATIC(INVOKESTATIC o){<a name="line.739"></a>
+<FONT color="green">740</FONT>                    for (int i=0; i&lt;o.getArgumentTypes(cpg).length; i++){<a name="line.740"></a>
+<FONT color="green">741</FONT>                            stack().pop();<a name="line.741"></a>
+<FONT color="green">742</FONT>                    }<a name="line.742"></a>
+<FONT color="green">743</FONT>                    // We are sure the invoked method will xRETURN eventually<a name="line.743"></a>
+<FONT color="green">744</FONT>                    // We simulate xRETURNs functionality here because we<a name="line.744"></a>
+<FONT color="green">745</FONT>                    // don't really "jump into" and simulate the invoked<a name="line.745"></a>
+<FONT color="green">746</FONT>                    // method.<a name="line.746"></a>
+<FONT color="green">747</FONT>                    if (o.getReturnType(cpg) != Type.VOID){<a name="line.747"></a>
+<FONT color="green">748</FONT>                            Type t = o.getReturnType(cpg);<a name="line.748"></a>
+<FONT color="green">749</FONT>                            if (    t.equals(Type.BOOLEAN)  ||<a name="line.749"></a>
+<FONT color="green">750</FONT>                                                    t.equals(Type.CHAR)                     ||<a name="line.750"></a>
+<FONT color="green">751</FONT>                                                    t.equals(Type.BYTE)             ||<a name="line.751"></a>
+<FONT color="green">752</FONT>                                                    t.equals(Type.SHORT)            )<a name="line.752"></a>
+<FONT color="green">753</FONT>                                    t = Type.INT;<a name="line.753"></a>
+<FONT color="green">754</FONT>                            stack().push(t);<a name="line.754"></a>
+<FONT color="green">755</FONT>                    }<a name="line.755"></a>
+<FONT color="green">756</FONT>            }<a name="line.756"></a>
+<FONT color="green">757</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.757"></a>
+<FONT color="green">758</FONT>            public void visitINVOKEVIRTUAL(INVOKEVIRTUAL o){<a name="line.758"></a>
+<FONT color="green">759</FONT>                    stack().pop(); //objectref<a name="line.759"></a>
+<FONT color="green">760</FONT>                    for (int i=0; i&lt;o.getArgumentTypes(cpg).length; i++){<a name="line.760"></a>
+<FONT color="green">761</FONT>                            stack().pop();<a name="line.761"></a>
+<FONT color="green">762</FONT>                    }<a name="line.762"></a>
+<FONT color="green">763</FONT>                    // We are sure the invoked method will xRETURN eventually<a name="line.763"></a>
+<FONT color="green">764</FONT>                    // We simulate xRETURNs functionality here because we<a name="line.764"></a>
+<FONT color="green">765</FONT>                    // don't really "jump into" and simulate the invoked<a name="line.765"></a>
+<FONT color="green">766</FONT>                    // method.<a name="line.766"></a>
+<FONT color="green">767</FONT>                    if (o.getReturnType(cpg) != Type.VOID){<a name="line.767"></a>
+<FONT color="green">768</FONT>                            Type t = o.getReturnType(cpg);<a name="line.768"></a>
+<FONT color="green">769</FONT>                            if (    t.equals(Type.BOOLEAN)  ||<a name="line.769"></a>
+<FONT color="green">770</FONT>                                                    t.equals(Type.CHAR)                     ||<a name="line.770"></a>
+<FONT color="green">771</FONT>                                                    t.equals(Type.BYTE)             ||<a name="line.771"></a>
+<FONT color="green">772</FONT>                                                    t.equals(Type.SHORT)            )<a name="line.772"></a>
+<FONT color="green">773</FONT>                                    t = Type.INT;<a name="line.773"></a>
+<FONT color="green">774</FONT>                            stack().push(t);<a name="line.774"></a>
+<FONT color="green">775</FONT>                    }<a name="line.775"></a>
+<FONT color="green">776</FONT>            }<a name="line.776"></a>
+<FONT color="green">777</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.777"></a>
+<FONT color="green">778</FONT>            public void visitIOR(IOR o){<a name="line.778"></a>
+<FONT color="green">779</FONT>                    stack().pop();<a name="line.779"></a>
+<FONT color="green">780</FONT>                    stack().pop();<a name="line.780"></a>
+<FONT color="green">781</FONT>                    stack().push(Type.INT);<a name="line.781"></a>
+<FONT color="green">782</FONT>            }<a name="line.782"></a>
+<FONT color="green">783</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.783"></a>
+<FONT color="green">784</FONT>            public void visitIREM(IREM o){<a name="line.784"></a>
+<FONT color="green">785</FONT>                    stack().pop();<a name="line.785"></a>
+<FONT color="green">786</FONT>                    stack().pop();<a name="line.786"></a>
+<FONT color="green">787</FONT>                    stack().push(Type.INT);<a name="line.787"></a>
+<FONT color="green">788</FONT>            }<a name="line.788"></a>
+<FONT color="green">789</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.789"></a>
+<FONT color="green">790</FONT>            public void visitIRETURN(IRETURN o){<a name="line.790"></a>
+<FONT color="green">791</FONT>                    stack().pop();<a name="line.791"></a>
+<FONT color="green">792</FONT>            }<a name="line.792"></a>
+<FONT color="green">793</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.793"></a>
+<FONT color="green">794</FONT>            public void visitISHL(ISHL o){<a name="line.794"></a>
+<FONT color="green">795</FONT>                    stack().pop();<a name="line.795"></a>
+<FONT color="green">796</FONT>                    stack().pop();<a name="line.796"></a>
+<FONT color="green">797</FONT>                    stack().push(Type.INT);<a name="line.797"></a>
+<FONT color="green">798</FONT>            }<a name="line.798"></a>
+<FONT color="green">799</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.799"></a>
+<FONT color="green">800</FONT>            public void visitISHR(ISHR o){<a name="line.800"></a>
+<FONT color="green">801</FONT>                    stack().pop();<a name="line.801"></a>
+<FONT color="green">802</FONT>                    stack().pop();<a name="line.802"></a>
+<FONT color="green">803</FONT>                    stack().push(Type.INT);<a name="line.803"></a>
+<FONT color="green">804</FONT>            }<a name="line.804"></a>
+<FONT color="green">805</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.805"></a>
+<FONT color="green">806</FONT>            public void visitISTORE(ISTORE o){<a name="line.806"></a>
+<FONT color="green">807</FONT>                    locals().set(o.getIndex(), stack().pop());<a name="line.807"></a>
+<FONT color="green">808</FONT>            }<a name="line.808"></a>
+<FONT color="green">809</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.809"></a>
+<FONT color="green">810</FONT>            public void visitISUB(ISUB o){<a name="line.810"></a>
+<FONT color="green">811</FONT>                    stack().pop();<a name="line.811"></a>
+<FONT color="green">812</FONT>                    stack().pop();<a name="line.812"></a>
+<FONT color="green">813</FONT>                    stack().push(Type.INT);<a name="line.813"></a>
+<FONT color="green">814</FONT>            }<a name="line.814"></a>
+<FONT color="green">815</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.815"></a>
+<FONT color="green">816</FONT>            public void visitIUSHR(IUSHR o){<a name="line.816"></a>
+<FONT color="green">817</FONT>                    stack().pop();<a name="line.817"></a>
+<FONT color="green">818</FONT>                    stack().pop();<a name="line.818"></a>
+<FONT color="green">819</FONT>                    stack().push(Type.INT);<a name="line.819"></a>
+<FONT color="green">820</FONT>            }<a name="line.820"></a>
+<FONT color="green">821</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.821"></a>
+<FONT color="green">822</FONT>            public void visitIXOR(IXOR o){<a name="line.822"></a>
+<FONT color="green">823</FONT>                    stack().pop();<a name="line.823"></a>
+<FONT color="green">824</FONT>                    stack().pop();<a name="line.824"></a>
+<FONT color="green">825</FONT>                    stack().push(Type.INT);<a name="line.825"></a>
+<FONT color="green">826</FONT>            }<a name="line.826"></a>
+<FONT color="green">827</FONT>    <a name="line.827"></a>
+<FONT color="green">828</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.828"></a>
+<FONT color="green">829</FONT>            public void visitJSR(JSR o){<a name="line.829"></a>
+<FONT color="green">830</FONT>                    stack().push(new ReturnaddressType(o.physicalSuccessor()));<a name="line.830"></a>
+<FONT color="green">831</FONT>    //System.err.println("TODO-----------:"+o.physicalSuccessor());<a name="line.831"></a>
+<FONT color="green">832</FONT>            }<a name="line.832"></a>
+<FONT color="green">833</FONT>    <a name="line.833"></a>
+<FONT color="green">834</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.834"></a>
+<FONT color="green">835</FONT>            public void visitJSR_W(JSR_W o){<a name="line.835"></a>
+<FONT color="green">836</FONT>                    stack().push(new ReturnaddressType(o.physicalSuccessor()));<a name="line.836"></a>
+<FONT color="green">837</FONT>            }<a name="line.837"></a>
+<FONT color="green">838</FONT>    <a name="line.838"></a>
+<FONT color="green">839</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.839"></a>
+<FONT color="green">840</FONT>            public void visitL2D(L2D o){<a name="line.840"></a>
+<FONT color="green">841</FONT>                    stack().pop();<a name="line.841"></a>
+<FONT color="green">842</FONT>                    stack().push(Type.DOUBLE);<a name="line.842"></a>
+<FONT color="green">843</FONT>            }<a name="line.843"></a>
+<FONT color="green">844</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.844"></a>
+<FONT color="green">845</FONT>            public void visitL2F(L2F o){<a name="line.845"></a>
+<FONT color="green">846</FONT>                    stack().pop();<a name="line.846"></a>
+<FONT color="green">847</FONT>                    stack().push(Type.FLOAT);<a name="line.847"></a>
+<FONT color="green">848</FONT>            }<a name="line.848"></a>
+<FONT color="green">849</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.849"></a>
+<FONT color="green">850</FONT>            public void visitL2I(L2I o){<a name="line.850"></a>
+<FONT color="green">851</FONT>                    stack().pop();<a name="line.851"></a>
+<FONT color="green">852</FONT>                    stack().push(Type.INT);<a name="line.852"></a>
+<FONT color="green">853</FONT>            }<a name="line.853"></a>
+<FONT color="green">854</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.854"></a>
+<FONT color="green">855</FONT>            public void visitLADD(LADD o){<a name="line.855"></a>
+<FONT color="green">856</FONT>                    stack().pop();<a name="line.856"></a>
+<FONT color="green">857</FONT>                    stack().pop();<a name="line.857"></a>
+<FONT color="green">858</FONT>                    stack().push(Type.LONG);<a name="line.858"></a>
+<FONT color="green">859</FONT>            }<a name="line.859"></a>
+<FONT color="green">860</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.860"></a>
+<FONT color="green">861</FONT>            public void visitLALOAD(LALOAD o){<a name="line.861"></a>
+<FONT color="green">862</FONT>                    stack().pop();<a name="line.862"></a>
+<FONT color="green">863</FONT>                    stack().pop();<a name="line.863"></a>
+<FONT color="green">864</FONT>                    stack().push(Type.LONG);<a name="line.864"></a>
+<FONT color="green">865</FONT>            }<a name="line.865"></a>
+<FONT color="green">866</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.866"></a>
+<FONT color="green">867</FONT>            public void visitLAND(LAND o){<a name="line.867"></a>
+<FONT color="green">868</FONT>                    stack().pop();<a name="line.868"></a>
+<FONT color="green">869</FONT>                    stack().pop();<a name="line.869"></a>
+<FONT color="green">870</FONT>                    stack().push(Type.LONG);<a name="line.870"></a>
+<FONT color="green">871</FONT>            }<a name="line.871"></a>
+<FONT color="green">872</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.872"></a>
+<FONT color="green">873</FONT>            public void visitLASTORE(LASTORE o){<a name="line.873"></a>
+<FONT color="green">874</FONT>                    stack().pop();<a name="line.874"></a>
+<FONT color="green">875</FONT>                    stack().pop();<a name="line.875"></a>
+<FONT color="green">876</FONT>                    stack().pop();<a name="line.876"></a>
+<FONT color="green">877</FONT>            }<a name="line.877"></a>
+<FONT color="green">878</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.878"></a>
+<FONT color="green">879</FONT>            public void visitLCMP(LCMP o){<a name="line.879"></a>
+<FONT color="green">880</FONT>                    stack().pop();<a name="line.880"></a>
+<FONT color="green">881</FONT>                    stack().pop();<a name="line.881"></a>
+<FONT color="green">882</FONT>                    stack().push(Type.INT);<a name="line.882"></a>
+<FONT color="green">883</FONT>            }<a name="line.883"></a>
+<FONT color="green">884</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.884"></a>
+<FONT color="green">885</FONT>            public void visitLCONST(LCONST o){<a name="line.885"></a>
+<FONT color="green">886</FONT>                    stack().push(Type.LONG);<a name="line.886"></a>
+<FONT color="green">887</FONT>            }<a name="line.887"></a>
+<FONT color="green">888</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.888"></a>
+<FONT color="green">889</FONT>            public void visitLDC(LDC o){<a name="line.889"></a>
+<FONT color="green">890</FONT>                    Constant c = cpg.getConstant(o.getIndex());<a name="line.890"></a>
+<FONT color="green">891</FONT>                    if (c instanceof ConstantInteger){<a name="line.891"></a>
+<FONT color="green">892</FONT>                            stack().push(Type.INT);<a name="line.892"></a>
+<FONT color="green">893</FONT>                    }<a name="line.893"></a>
+<FONT color="green">894</FONT>                    if (c instanceof ConstantFloat){<a name="line.894"></a>
+<FONT color="green">895</FONT>                            stack().push(Type.FLOAT);<a name="line.895"></a>
+<FONT color="green">896</FONT>                    }<a name="line.896"></a>
+<FONT color="green">897</FONT>                    if (c instanceof ConstantString){<a name="line.897"></a>
+<FONT color="green">898</FONT>                            stack().push(Type.STRING);<a name="line.898"></a>
+<FONT color="green">899</FONT>                    }<a name="line.899"></a>
+<FONT color="green">900</FONT>            if (c instanceof ConstantClass) {<a name="line.900"></a>
+<FONT color="green">901</FONT>                stack().push(new ObjectType("java.lang.Class"));<a name="line.901"></a>
+<FONT color="green">902</FONT>            }<a name="line.902"></a>
+<FONT color="green">903</FONT>            }<a name="line.903"></a>
+<FONT color="green">904</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.904"></a>
+<FONT color="green">905</FONT>            public void visitLDC_W(LDC_W o){<a name="line.905"></a>
+<FONT color="green">906</FONT>                    Constant c = cpg.getConstant(o.getIndex());<a name="line.906"></a>
+<FONT color="green">907</FONT>                    if (c instanceof ConstantInteger){<a name="line.907"></a>
+<FONT color="green">908</FONT>                            stack().push(Type.INT);<a name="line.908"></a>
+<FONT color="green">909</FONT>                    }<a name="line.909"></a>
+<FONT color="green">910</FONT>                    if (c instanceof ConstantFloat){<a name="line.910"></a>
+<FONT color="green">911</FONT>                            stack().push(Type.FLOAT);<a name="line.911"></a>
+<FONT color="green">912</FONT>                    }<a name="line.912"></a>
+<FONT color="green">913</FONT>                    if (c instanceof ConstantString){<a name="line.913"></a>
+<FONT color="green">914</FONT>                            stack().push(Type.STRING);<a name="line.914"></a>
+<FONT color="green">915</FONT>                    }<a name="line.915"></a>
+<FONT color="green">916</FONT>            if (c instanceof ConstantClass) {<a name="line.916"></a>
+<FONT color="green">917</FONT>                stack().push(new ObjectType("java.lang.Class"));<a name="line.917"></a>
+<FONT color="green">918</FONT>            }<a name="line.918"></a>
+<FONT color="green">919</FONT>            }<a name="line.919"></a>
+<FONT color="green">920</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.920"></a>
+<FONT color="green">921</FONT>            public void visitLDC2_W(LDC2_W o){<a name="line.921"></a>
+<FONT color="green">922</FONT>                    Constant c = cpg.getConstant(o.getIndex());<a name="line.922"></a>
+<FONT color="green">923</FONT>                    if (c instanceof ConstantLong){<a name="line.923"></a>
+<FONT color="green">924</FONT>                            stack().push(Type.LONG);<a name="line.924"></a>
+<FONT color="green">925</FONT>                    }<a name="line.925"></a>
+<FONT color="green">926</FONT>                    if (c instanceof ConstantDouble){<a name="line.926"></a>
+<FONT color="green">927</FONT>                            stack().push(Type.DOUBLE);<a name="line.927"></a>
+<FONT color="green">928</FONT>                    }<a name="line.928"></a>
+<FONT color="green">929</FONT>            }<a name="line.929"></a>
+<FONT color="green">930</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.930"></a>
+<FONT color="green">931</FONT>            public void visitLDIV(LDIV o){<a name="line.931"></a>
+<FONT color="green">932</FONT>                    stack().pop();<a name="line.932"></a>
+<FONT color="green">933</FONT>                    stack().pop();<a name="line.933"></a>
+<FONT color="green">934</FONT>                    stack().push(Type.LONG);<a name="line.934"></a>
+<FONT color="green">935</FONT>            }<a name="line.935"></a>
+<FONT color="green">936</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.936"></a>
+<FONT color="green">937</FONT>            public void visitLLOAD(LLOAD o){<a name="line.937"></a>
+<FONT color="green">938</FONT>                    stack().push(locals().get(o.getIndex()));<a name="line.938"></a>
+<FONT color="green">939</FONT>            }<a name="line.939"></a>
+<FONT color="green">940</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.940"></a>
+<FONT color="green">941</FONT>            public void visitLMUL(LMUL o){<a name="line.941"></a>
+<FONT color="green">942</FONT>                    stack().pop();<a name="line.942"></a>
+<FONT color="green">943</FONT>                    stack().pop();<a name="line.943"></a>
+<FONT color="green">944</FONT>                    stack().push(Type.LONG);<a name="line.944"></a>
+<FONT color="green">945</FONT>            }<a name="line.945"></a>
+<FONT color="green">946</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.946"></a>
+<FONT color="green">947</FONT>            public void visitLNEG(LNEG o){<a name="line.947"></a>
+<FONT color="green">948</FONT>                    stack().pop();<a name="line.948"></a>
+<FONT color="green">949</FONT>                    stack().push(Type.LONG);<a name="line.949"></a>
+<FONT color="green">950</FONT>            }<a name="line.950"></a>
+<FONT color="green">951</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.951"></a>
+<FONT color="green">952</FONT>            public void visitLOOKUPSWITCH(LOOKUPSWITCH o){<a name="line.952"></a>
+<FONT color="green">953</FONT>                    stack().pop(); //key<a name="line.953"></a>
+<FONT color="green">954</FONT>            }<a name="line.954"></a>
+<FONT color="green">955</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.955"></a>
+<FONT color="green">956</FONT>            public void visitLOR(LOR o){<a name="line.956"></a>
+<FONT color="green">957</FONT>                    stack().pop();<a name="line.957"></a>
+<FONT color="green">958</FONT>                    stack().pop();<a name="line.958"></a>
+<FONT color="green">959</FONT>                    stack().push(Type.LONG);<a name="line.959"></a>
+<FONT color="green">960</FONT>            }<a name="line.960"></a>
+<FONT color="green">961</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.961"></a>
+<FONT color="green">962</FONT>            public void visitLREM(LREM o){<a name="line.962"></a>
+<FONT color="green">963</FONT>                    stack().pop();<a name="line.963"></a>
+<FONT color="green">964</FONT>                    stack().pop();<a name="line.964"></a>
+<FONT color="green">965</FONT>                    stack().push(Type.LONG);<a name="line.965"></a>
+<FONT color="green">966</FONT>            }<a name="line.966"></a>
+<FONT color="green">967</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.967"></a>
+<FONT color="green">968</FONT>            public void visitLRETURN(LRETURN o){<a name="line.968"></a>
+<FONT color="green">969</FONT>                    stack().pop();<a name="line.969"></a>
+<FONT color="green">970</FONT>            }<a name="line.970"></a>
+<FONT color="green">971</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.971"></a>
+<FONT color="green">972</FONT>            public void visitLSHL(LSHL o){<a name="line.972"></a>
+<FONT color="green">973</FONT>                    stack().pop();<a name="line.973"></a>
+<FONT color="green">974</FONT>                    stack().pop();<a name="line.974"></a>
+<FONT color="green">975</FONT>                    stack().push(Type.LONG);<a name="line.975"></a>
+<FONT color="green">976</FONT>            }<a name="line.976"></a>
+<FONT color="green">977</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.977"></a>
+<FONT color="green">978</FONT>            public void visitLSHR(LSHR o){<a name="line.978"></a>
+<FONT color="green">979</FONT>                    stack().pop();<a name="line.979"></a>
+<FONT color="green">980</FONT>                    stack().pop();<a name="line.980"></a>
+<FONT color="green">981</FONT>                    stack().push(Type.LONG);<a name="line.981"></a>
+<FONT color="green">982</FONT>            }<a name="line.982"></a>
+<FONT color="green">983</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.983"></a>
+<FONT color="green">984</FONT>            public void visitLSTORE(LSTORE o){<a name="line.984"></a>
+<FONT color="green">985</FONT>                    locals().set(o.getIndex(), stack().pop());<a name="line.985"></a>
+<FONT color="green">986</FONT>                    locals().set(o.getIndex()+1, Type.UNKNOWN);             <a name="line.986"></a>
+<FONT color="green">987</FONT>            }<a name="line.987"></a>
+<FONT color="green">988</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.988"></a>
+<FONT color="green">989</FONT>            public void visitLSUB(LSUB o){<a name="line.989"></a>
+<FONT color="green">990</FONT>                    stack().pop();<a name="line.990"></a>
+<FONT color="green">991</FONT>                    stack().pop();<a name="line.991"></a>
+<FONT color="green">992</FONT>                    stack().push(Type.LONG);<a name="line.992"></a>
+<FONT color="green">993</FONT>            }<a name="line.993"></a>
+<FONT color="green">994</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.994"></a>
+<FONT color="green">995</FONT>            public void visitLUSHR(LUSHR o){<a name="line.995"></a>
+<FONT color="green">996</FONT>                    stack().pop();<a name="line.996"></a>
+<FONT color="green">997</FONT>                    stack().pop();<a name="line.997"></a>
+<FONT color="green">998</FONT>                    stack().push(Type.LONG);<a name="line.998"></a>
+<FONT color="green">999</FONT>            }<a name="line.999"></a>
+<FONT color="green">1000</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1000"></a>
+<FONT color="green">1001</FONT>            public void visitLXOR(LXOR o){<a name="line.1001"></a>
+<FONT color="green">1002</FONT>                    stack().pop();<a name="line.1002"></a>
+<FONT color="green">1003</FONT>                    stack().pop();<a name="line.1003"></a>
+<FONT color="green">1004</FONT>                    stack().push(Type.LONG);<a name="line.1004"></a>
+<FONT color="green">1005</FONT>            }<a name="line.1005"></a>
+<FONT color="green">1006</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1006"></a>
+<FONT color="green">1007</FONT>            public void visitMONITORENTER(MONITORENTER o){<a name="line.1007"></a>
+<FONT color="green">1008</FONT>                    stack().pop();<a name="line.1008"></a>
+<FONT color="green">1009</FONT>            }<a name="line.1009"></a>
+<FONT color="green">1010</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1010"></a>
+<FONT color="green">1011</FONT>            public void visitMONITOREXIT(MONITOREXIT o){<a name="line.1011"></a>
+<FONT color="green">1012</FONT>                    stack().pop();<a name="line.1012"></a>
+<FONT color="green">1013</FONT>            }<a name="line.1013"></a>
+<FONT color="green">1014</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1014"></a>
+<FONT color="green">1015</FONT>            public void visitMULTIANEWARRAY(MULTIANEWARRAY o){<a name="line.1015"></a>
+<FONT color="green">1016</FONT>                    for (int i=0; i&lt;o.getDimensions(); i++){<a name="line.1016"></a>
+<FONT color="green">1017</FONT>                            stack().pop();<a name="line.1017"></a>
+<FONT color="green">1018</FONT>                    }<a name="line.1018"></a>
+<FONT color="green">1019</FONT>                    stack().push(o.getType(cpg));<a name="line.1019"></a>
+<FONT color="green">1020</FONT>            }<a name="line.1020"></a>
+<FONT color="green">1021</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1021"></a>
+<FONT color="green">1022</FONT>            public void visitNEW(NEW o){<a name="line.1022"></a>
+<FONT color="green">1023</FONT>                    stack().push(new UninitializedObjectType((ObjectType) (o.getType(cpg))));<a name="line.1023"></a>
+<FONT color="green">1024</FONT>            }<a name="line.1024"></a>
+<FONT color="green">1025</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1025"></a>
+<FONT color="green">1026</FONT>            public void visitNEWARRAY(NEWARRAY o){<a name="line.1026"></a>
+<FONT color="green">1027</FONT>                    stack().pop();<a name="line.1027"></a>
+<FONT color="green">1028</FONT>                    stack().push(o.getType());<a name="line.1028"></a>
+<FONT color="green">1029</FONT>            }<a name="line.1029"></a>
+<FONT color="green">1030</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1030"></a>
+<FONT color="green">1031</FONT>            public void visitNOP(NOP o){<a name="line.1031"></a>
+<FONT color="green">1032</FONT>            }<a name="line.1032"></a>
+<FONT color="green">1033</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1033"></a>
+<FONT color="green">1034</FONT>            public void visitPOP(POP o){<a name="line.1034"></a>
+<FONT color="green">1035</FONT>                    stack().pop();<a name="line.1035"></a>
+<FONT color="green">1036</FONT>            }<a name="line.1036"></a>
+<FONT color="green">1037</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1037"></a>
+<FONT color="green">1038</FONT>            public void visitPOP2(POP2 o){<a name="line.1038"></a>
+<FONT color="green">1039</FONT>                    Type t = stack().pop();<a name="line.1039"></a>
+<FONT color="green">1040</FONT>                    if (t.getSize() == 1){<a name="line.1040"></a>
+<FONT color="green">1041</FONT>                            stack().pop();<a name="line.1041"></a>
+<FONT color="green">1042</FONT>                    }               <a name="line.1042"></a>
+<FONT color="green">1043</FONT>            }<a name="line.1043"></a>
+<FONT color="green">1044</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1044"></a>
+<FONT color="green">1045</FONT>            public void visitPUTFIELD(PUTFIELD o){<a name="line.1045"></a>
+<FONT color="green">1046</FONT>                    stack().pop();<a name="line.1046"></a>
+<FONT color="green">1047</FONT>                    stack().pop();<a name="line.1047"></a>
+<FONT color="green">1048</FONT>            }<a name="line.1048"></a>
+<FONT color="green">1049</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1049"></a>
+<FONT color="green">1050</FONT>            public void visitPUTSTATIC(PUTSTATIC o){<a name="line.1050"></a>
+<FONT color="green">1051</FONT>                    stack().pop();<a name="line.1051"></a>
+<FONT color="green">1052</FONT>            }<a name="line.1052"></a>
+<FONT color="green">1053</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1053"></a>
+<FONT color="green">1054</FONT>            public void visitRET(RET o){<a name="line.1054"></a>
+<FONT color="green">1055</FONT>                    // do nothing, return address<a name="line.1055"></a>
+<FONT color="green">1056</FONT>                    // is in in the local variables.<a name="line.1056"></a>
+<FONT color="green">1057</FONT>            }<a name="line.1057"></a>
+<FONT color="green">1058</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1058"></a>
+<FONT color="green">1059</FONT>            public void visitRETURN(RETURN o){<a name="line.1059"></a>
+<FONT color="green">1060</FONT>                    // do nothing.<a name="line.1060"></a>
+<FONT color="green">1061</FONT>            }<a name="line.1061"></a>
+<FONT color="green">1062</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1062"></a>
+<FONT color="green">1063</FONT>            public void visitSALOAD(SALOAD o){<a name="line.1063"></a>
+<FONT color="green">1064</FONT>                    stack().pop();<a name="line.1064"></a>
+<FONT color="green">1065</FONT>                    stack().pop();<a name="line.1065"></a>
+<FONT color="green">1066</FONT>                    stack().push(Type.INT);<a name="line.1066"></a>
+<FONT color="green">1067</FONT>            }<a name="line.1067"></a>
+<FONT color="green">1068</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1068"></a>
+<FONT color="green">1069</FONT>            public void visitSASTORE(SASTORE o){<a name="line.1069"></a>
+<FONT color="green">1070</FONT>                    stack().pop();<a name="line.1070"></a>
+<FONT color="green">1071</FONT>                    stack().pop();<a name="line.1071"></a>
+<FONT color="green">1072</FONT>                    stack().pop();<a name="line.1072"></a>
+<FONT color="green">1073</FONT>            }<a name="line.1073"></a>
+<FONT color="green">1074</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1074"></a>
+<FONT color="green">1075</FONT>            public void visitSIPUSH(SIPUSH o){<a name="line.1075"></a>
+<FONT color="green">1076</FONT>                    stack().push(Type.INT);<a name="line.1076"></a>
+<FONT color="green">1077</FONT>            }<a name="line.1077"></a>
+<FONT color="green">1078</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1078"></a>
+<FONT color="green">1079</FONT>            public void visitSWAP(SWAP o){<a name="line.1079"></a>
+<FONT color="green">1080</FONT>                    Type t = stack().pop();<a name="line.1080"></a>
+<FONT color="green">1081</FONT>                    Type u = stack().pop();<a name="line.1081"></a>
+<FONT color="green">1082</FONT>                    stack().push(t);<a name="line.1082"></a>
+<FONT color="green">1083</FONT>                    stack().push(u);<a name="line.1083"></a>
+<FONT color="green">1084</FONT>            }<a name="line.1084"></a>
+<FONT color="green">1085</FONT>            /** Symbolically executes the corresponding Java Virtual Machine instruction. */ <a name="line.1085"></a>
+<FONT color="green">1086</FONT>            public void visitTABLESWITCH(TABLESWITCH o){<a name="line.1086"></a>
+<FONT color="green">1087</FONT>                    stack().pop();<a name="line.1087"></a>
+<FONT color="green">1088</FONT>            }<a name="line.1088"></a>
+<FONT color="green">1089</FONT>    }<a name="line.1089"></a>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</PRE>
+</BODY>
+</HTML>

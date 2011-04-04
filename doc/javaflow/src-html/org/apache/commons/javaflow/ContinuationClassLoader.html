@@ -1,0 +1,493 @@
+<HTML>
+<BODY BGCOLOR="white">
+<PRE>
+<FONT color="green">001</FONT>    /*<a name="line.1"></a>
+<FONT color="green">002</FONT>     * Licensed to the Apache Software Foundation (ASF) under one or more<a name="line.2"></a>
+<FONT color="green">003</FONT>     * contributor license agreements.  See the NOTICE file distributed with<a name="line.3"></a>
+<FONT color="green">004</FONT>     * this work for additional information regarding copyright ownership.<a name="line.4"></a>
+<FONT color="green">005</FONT>     * The ASF licenses this file to You under the Apache License, Version 2.0<a name="line.5"></a>
+<FONT color="green">006</FONT>     * (the "License"); you may not use this file except in compliance with<a name="line.6"></a>
+<FONT color="green">007</FONT>     * the License.  You may obtain a copy of the License at<a name="line.7"></a>
+<FONT color="green">008</FONT>     *<a name="line.8"></a>
+<FONT color="green">009</FONT>     *      http://www.apache.org/licenses/LICENSE-2.0<a name="line.9"></a>
+<FONT color="green">010</FONT>     *<a name="line.10"></a>
+<FONT color="green">011</FONT>     * Unless required by applicable law or agreed to in writing, software<a name="line.11"></a>
+<FONT color="green">012</FONT>     * distributed under the License is distributed on an "AS IS" BASIS,<a name="line.12"></a>
+<FONT color="green">013</FONT>     * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.<a name="line.13"></a>
+<FONT color="green">014</FONT>     * See the License for the specific language governing permissions and<a name="line.14"></a>
+<FONT color="green">015</FONT>     * limitations under the License.<a name="line.15"></a>
+<FONT color="green">016</FONT>     */<a name="line.16"></a>
+<FONT color="green">017</FONT>    package org.apache.commons.javaflow;<a name="line.17"></a>
+<FONT color="green">018</FONT>    <a name="line.18"></a>
+<FONT color="green">019</FONT>    import org.apache.commons.javaflow.bytecode.transformation.ResourceTransformer;<a name="line.19"></a>
+<FONT color="green">020</FONT>    import org.apache.commons.javaflow.bytecode.transformation.asm.AsmClassTransformer;<a name="line.20"></a>
+<FONT color="green">021</FONT>    import org.apache.commons.logging.Log;<a name="line.21"></a>
+<FONT color="green">022</FONT>    import org.apache.commons.logging.LogFactory;<a name="line.22"></a>
+<FONT color="green">023</FONT>    <a name="line.23"></a>
+<FONT color="green">024</FONT>    import java.io.ByteArrayOutputStream;<a name="line.24"></a>
+<FONT color="green">025</FONT>    import java.io.IOException;<a name="line.25"></a>
+<FONT color="green">026</FONT>    import java.io.InputStream;<a name="line.26"></a>
+<FONT color="green">027</FONT>    import java.net.URL;<a name="line.27"></a>
+<FONT color="green">028</FONT>    import java.net.URLClassLoader;<a name="line.28"></a>
+<FONT color="green">029</FONT>    import java.security.AccessControlContext;<a name="line.29"></a>
+<FONT color="green">030</FONT>    import java.security.AccessController;<a name="line.30"></a>
+<FONT color="green">031</FONT>    import java.security.PrivilegedAction;<a name="line.31"></a>
+<FONT color="green">032</FONT>    import java.security.ProtectionDomain;<a name="line.32"></a>
+<FONT color="green">033</FONT>    import java.util.ArrayList;<a name="line.33"></a>
+<FONT color="green">034</FONT>    import java.util.List;<a name="line.34"></a>
+<FONT color="green">035</FONT>    <a name="line.35"></a>
+<FONT color="green">036</FONT>    /**<a name="line.36"></a>
+<FONT color="green">037</FONT>     * {@link URLClassLoader} with bytecode instrumentation for javaflow.<a name="line.37"></a>
+<FONT color="green">038</FONT>     *<a name="line.38"></a>
+<FONT color="green">039</FONT>     * &lt;p&gt;<a name="line.39"></a>
+<FONT color="green">040</FONT>     * This class loader is useful where the application can set up multiple<a name="line.40"></a>
+<FONT color="green">041</FONT>     * class loaders (such as in a container environment,<a name="line.41"></a>
+<FONT color="green">042</FONT>     * &lt;a href="http://classworlds.codehaus.org/"&gt;ClassWorlds&lt;/a&gt;, or<a name="line.42"></a>
+<FONT color="green">043</FONT>     * &lt;a href="http://forehead.werken.com/"&gt;Forehead&lt;/a&gt;) and when you can<a name="line.43"></a>
+<FONT color="green">044</FONT>     * isolate the continuation-enabled portion of your application into a separate<a name="line.44"></a>
+<FONT color="green">045</FONT>     * jar file.<a name="line.45"></a>
+<FONT color="green">046</FONT>     */<a name="line.46"></a>
+<FONT color="green">047</FONT>    public final class ContinuationClassLoader extends URLClassLoader {<a name="line.47"></a>
+<FONT color="green">048</FONT>    <a name="line.48"></a>
+<FONT color="green">049</FONT>        private final static Log log = LogFactory.getLog(ContinuationClassLoader.class);<a name="line.49"></a>
+<FONT color="green">050</FONT>    <a name="line.50"></a>
+<FONT color="green">051</FONT>        private final ResourceTransformer transformer;<a name="line.51"></a>
+<FONT color="green">052</FONT>    <a name="line.52"></a>
+<FONT color="green">053</FONT>        /**<a name="line.53"></a>
+<FONT color="green">054</FONT>         * Indicates whether the parent class loader should be<a name="line.54"></a>
+<FONT color="green">055</FONT>         * consulted before trying to load with this class loader.<a name="line.55"></a>
+<FONT color="green">056</FONT>         */<a name="line.56"></a>
+<FONT color="green">057</FONT>        private boolean parentFirst = true;<a name="line.57"></a>
+<FONT color="green">058</FONT>    <a name="line.58"></a>
+<FONT color="green">059</FONT>        /**<a name="line.59"></a>
+<FONT color="green">060</FONT>         * These are the package roots that are to be loaded by the parent class<a name="line.60"></a>
+<FONT color="green">061</FONT>         * loader regardless of whether the parent class loader is being searched<a name="line.61"></a>
+<FONT color="green">062</FONT>         * first or not.<a name="line.62"></a>
+<FONT color="green">063</FONT>         */<a name="line.63"></a>
+<FONT color="green">064</FONT>        private List&lt;String&gt; systemPackages = new ArrayList&lt;String&gt;();<a name="line.64"></a>
+<FONT color="green">065</FONT>    <a name="line.65"></a>
+<FONT color="green">066</FONT>        /**<a name="line.66"></a>
+<FONT color="green">067</FONT>         * These are the package roots that are to be loaded by this class loader<a name="line.67"></a>
+<FONT color="green">068</FONT>         * regardless of whether the parent class loader is being searched first<a name="line.68"></a>
+<FONT color="green">069</FONT>         * or not.<a name="line.69"></a>
+<FONT color="green">070</FONT>         */<a name="line.70"></a>
+<FONT color="green">071</FONT>        private List&lt;String&gt; loaderPackages = new ArrayList&lt;String&gt;();<a name="line.71"></a>
+<FONT color="green">072</FONT>    <a name="line.72"></a>
+<FONT color="green">073</FONT>        /**<a name="line.73"></a>
+<FONT color="green">074</FONT>         * Whether or not this classloader will ignore the base<a name="line.74"></a>
+<FONT color="green">075</FONT>         * classloader if it can't find a class.<a name="line.75"></a>
+<FONT color="green">076</FONT>         *<a name="line.76"></a>
+<FONT color="green">077</FONT>         * @see #setIsolated(boolean)<a name="line.77"></a>
+<FONT color="green">078</FONT>         */<a name="line.78"></a>
+<FONT color="green">079</FONT>        private boolean ignoreBase = false;<a name="line.79"></a>
+<FONT color="green">080</FONT>    <a name="line.80"></a>
+<FONT color="green">081</FONT>        /* The context to be used when loading classes and resources */<a name="line.81"></a>
+<FONT color="green">082</FONT>        private final AccessControlContext acc;<a name="line.82"></a>
+<FONT color="green">083</FONT>    <a name="line.83"></a>
+<FONT color="green">084</FONT>        private static final int BUFFER_SIZE = 4096;<a name="line.84"></a>
+<FONT color="green">085</FONT>    <a name="line.85"></a>
+<FONT color="green">086</FONT>        /**<a name="line.86"></a>
+<FONT color="green">087</FONT>         * Creates a classloader by using the classpath given.<a name="line.87"></a>
+<FONT color="green">088</FONT>         *<a name="line.88"></a>
+<FONT color="green">089</FONT>         * @param urls<a name="line.89"></a>
+<FONT color="green">090</FONT>         *      The URLs from which to load classes and resources<a name="line.90"></a>
+<FONT color="green">091</FONT>         * @param parent<a name="line.91"></a>
+<FONT color="green">092</FONT>         *      The parent classloader to which unsatisfied loading<a name="line.92"></a>
+<FONT color="green">093</FONT>         *      attempts are delegated. May be &lt;code&gt;null&lt;/code&gt;,<a name="line.93"></a>
+<FONT color="green">094</FONT>         *      in which case the {@link ClassLoader#getSystemClassLoader() system classloader}<a name="line.94"></a>
+<FONT color="green">095</FONT>         *      is used as the parent.<a name="line.95"></a>
+<FONT color="green">096</FONT>         * @param transformer<a name="line.96"></a>
+<FONT color="green">097</FONT>         *      This transformer is used to perform the byte-code enhancement.<a name="line.97"></a>
+<FONT color="green">098</FONT>         *      May not be null.<a name="line.98"></a>
+<FONT color="green">099</FONT>         */<a name="line.99"></a>
+<FONT color="green">100</FONT>        public ContinuationClassLoader(URL[] urls, ClassLoader parent, ResourceTransformer transformer) {<a name="line.100"></a>
+<FONT color="green">101</FONT>            super(urls,fixNullParent(parent));<a name="line.101"></a>
+<FONT color="green">102</FONT>            if(transformer==null)<a name="line.102"></a>
+<FONT color="green">103</FONT>                throw new IllegalArgumentException();<a name="line.103"></a>
+<FONT color="green">104</FONT>            this.transformer = transformer;<a name="line.104"></a>
+<FONT color="green">105</FONT>            acc = AccessController.getContext();<a name="line.105"></a>
+<FONT color="green">106</FONT>        }<a name="line.106"></a>
+<FONT color="green">107</FONT>    <a name="line.107"></a>
+<FONT color="green">108</FONT>        public ContinuationClassLoader(URL[] urls, ClassLoader parent) {<a name="line.108"></a>
+<FONT color="green">109</FONT>            this(urls,parent,new AsmClassTransformer());<a name="line.109"></a>
+<FONT color="green">110</FONT>        }<a name="line.110"></a>
+<FONT color="green">111</FONT>    <a name="line.111"></a>
+<FONT color="green">112</FONT>        private static ClassLoader fixNullParent(ClassLoader classLoader) {<a name="line.112"></a>
+<FONT color="green">113</FONT>            if(classLoader!=null) {<a name="line.113"></a>
+<FONT color="green">114</FONT>                return classLoader;<a name="line.114"></a>
+<FONT color="green">115</FONT>            } else {<a name="line.115"></a>
+<FONT color="green">116</FONT>                return getSystemClassLoader();<a name="line.116"></a>
+<FONT color="green">117</FONT>            }<a name="line.117"></a>
+<FONT color="green">118</FONT>        }<a name="line.118"></a>
+<FONT color="green">119</FONT>    <a name="line.119"></a>
+<FONT color="green">120</FONT>        /**<a name="line.120"></a>
+<FONT color="green">121</FONT>         * Control whether class lookup is delegated to the parent loader first<a name="line.121"></a>
+<FONT color="green">122</FONT>         * or after this loader. Use with extreme caution. Setting this to<a name="line.122"></a>
+<FONT color="green">123</FONT>         * false violates the class loader hierarchy and can lead to Linkage errors<a name="line.123"></a>
+<FONT color="green">124</FONT>         *<a name="line.124"></a>
+<FONT color="green">125</FONT>         * @param parentFirst if true, delegate initial class search to the parent<a name="line.125"></a>
+<FONT color="green">126</FONT>         *                    classloader.<a name="line.126"></a>
+<FONT color="green">127</FONT>         */<a name="line.127"></a>
+<FONT color="green">128</FONT>        public void setParentFirst(boolean parentFirst) {<a name="line.128"></a>
+<FONT color="green">129</FONT>            this.parentFirst = parentFirst;<a name="line.129"></a>
+<FONT color="green">130</FONT>        }<a name="line.130"></a>
+<FONT color="green">131</FONT>    <a name="line.131"></a>
+<FONT color="green">132</FONT>        /**<a name="line.132"></a>
+<FONT color="green">133</FONT>         * Sets whether this classloader should run in isolated mode. In<a name="line.133"></a>
+<FONT color="green">134</FONT>         * isolated mode, classes not found on the given classpath will<a name="line.134"></a>
+<FONT color="green">135</FONT>         * not be referred to the parent class loader but will cause a<a name="line.135"></a>
+<FONT color="green">136</FONT>         * ClassNotFoundException.<a name="line.136"></a>
+<FONT color="green">137</FONT>         *<a name="line.137"></a>
+<FONT color="green">138</FONT>         * @param isolated Whether or not this classloader should run in<a name="line.138"></a>
+<FONT color="green">139</FONT>         *                 isolated mode.<a name="line.139"></a>
+<FONT color="green">140</FONT>         */<a name="line.140"></a>
+<FONT color="green">141</FONT>        public void setIsolated(boolean isolated) {<a name="line.141"></a>
+<FONT color="green">142</FONT>            ignoreBase = isolated;<a name="line.142"></a>
+<FONT color="green">143</FONT>        }<a name="line.143"></a>
+<FONT color="green">144</FONT>    <a name="line.144"></a>
+<FONT color="green">145</FONT>        /**<a name="line.145"></a>
+<FONT color="green">146</FONT>         * Adds a package root to the list of packages which must be loaded on the<a name="line.146"></a>
+<FONT color="green">147</FONT>         * parent loader.<a name="line.147"></a>
+<FONT color="green">148</FONT>         *<a name="line.148"></a>
+<FONT color="green">149</FONT>         * All subpackages are also included.<a name="line.149"></a>
+<FONT color="green">150</FONT>         *<a name="line.150"></a>
+<FONT color="green">151</FONT>         * @param packageRoot The root of all packages to be included.<a name="line.151"></a>
+<FONT color="green">152</FONT>         *                    Should not be &lt;code&gt;null&lt;/code&gt;.<a name="line.152"></a>
+<FONT color="green">153</FONT>         */<a name="line.153"></a>
+<FONT color="green">154</FONT>        public synchronized void addSystemPackageRoot(String packageRoot) {<a name="line.154"></a>
+<FONT color="green">155</FONT>            systemPackages.add(appendDot(packageRoot));<a name="line.155"></a>
+<FONT color="green">156</FONT>        }<a name="line.156"></a>
+<FONT color="green">157</FONT>    <a name="line.157"></a>
+<FONT color="green">158</FONT>        /**<a name="line.158"></a>
+<FONT color="green">159</FONT>         * Adds a package root to the list of packages which must be loaded using<a name="line.159"></a>
+<FONT color="green">160</FONT>         * this loader.<a name="line.160"></a>
+<FONT color="green">161</FONT>         *<a name="line.161"></a>
+<FONT color="green">162</FONT>         * All subpackages are also included.<a name="line.162"></a>
+<FONT color="green">163</FONT>         *<a name="line.163"></a>
+<FONT color="green">164</FONT>         * @param packageRoot The root of all packages to be included.<a name="line.164"></a>
+<FONT color="green">165</FONT>         *                    Should not be &lt;code&gt;null&lt;/code&gt;.<a name="line.165"></a>
+<FONT color="green">166</FONT>         */<a name="line.166"></a>
+<FONT color="green">167</FONT>        public synchronized void addLoaderPackageRoot(String packageRoot) {<a name="line.167"></a>
+<FONT color="green">168</FONT>            loaderPackages.add(appendDot(packageRoot));<a name="line.168"></a>
+<FONT color="green">169</FONT>        }<a name="line.169"></a>
+<FONT color="green">170</FONT>    <a name="line.170"></a>
+<FONT color="green">171</FONT>        private String appendDot(String str) {<a name="line.171"></a>
+<FONT color="green">172</FONT>            if(str.endsWith("."))<a name="line.172"></a>
+<FONT color="green">173</FONT>                str += '.';<a name="line.173"></a>
+<FONT color="green">174</FONT>            return str;<a name="line.174"></a>
+<FONT color="green">175</FONT>        }<a name="line.175"></a>
+<FONT color="green">176</FONT>    <a name="line.176"></a>
+<FONT color="green">177</FONT>        /**<a name="line.177"></a>
+<FONT color="green">178</FONT>         * Loads a class through this class loader even if that class is available<a name="line.178"></a>
+<FONT color="green">179</FONT>         * on the parent classpath.<a name="line.179"></a>
+<FONT color="green">180</FONT>         *<a name="line.180"></a>
+<FONT color="green">181</FONT>         * This ensures that any classes which are loaded by the returned class<a name="line.181"></a>
+<FONT color="green">182</FONT>         * will use this classloader.<a name="line.182"></a>
+<FONT color="green">183</FONT>         *<a name="line.183"></a>
+<FONT color="green">184</FONT>         * @param classname The name of the class to be loaded.<a name="line.184"></a>
+<FONT color="green">185</FONT>         *                  Must not be &lt;code&gt;null&lt;/code&gt;.<a name="line.185"></a>
+<FONT color="green">186</FONT>         *<a name="line.186"></a>
+<FONT color="green">187</FONT>         * @return the required Class object<a name="line.187"></a>
+<FONT color="green">188</FONT>         *<a name="line.188"></a>
+<FONT color="green">189</FONT>         * @exception ClassNotFoundException if the requested class does not exist<a name="line.189"></a>
+<FONT color="green">190</FONT>         *                                   on this loader's classpath.<a name="line.190"></a>
+<FONT color="green">191</FONT>         */<a name="line.191"></a>
+<FONT color="green">192</FONT>        public Class&lt;?&gt; forceLoadClass(String classname)<a name="line.192"></a>
+<FONT color="green">193</FONT>             throws ClassNotFoundException {<a name="line.193"></a>
+<FONT color="green">194</FONT>            log.debug("force loading " + classname);<a name="line.194"></a>
+<FONT color="green">195</FONT>    <a name="line.195"></a>
+<FONT color="green">196</FONT>            Class&lt;?&gt; theClass = findLoadedClass(classname);<a name="line.196"></a>
+<FONT color="green">197</FONT>    <a name="line.197"></a>
+<FONT color="green">198</FONT>            if (theClass == null) {<a name="line.198"></a>
+<FONT color="green">199</FONT>                theClass = findClass(classname);<a name="line.199"></a>
+<FONT color="green">200</FONT>            }<a name="line.200"></a>
+<FONT color="green">201</FONT>    <a name="line.201"></a>
+<FONT color="green">202</FONT>            return theClass;<a name="line.202"></a>
+<FONT color="green">203</FONT>        }<a name="line.203"></a>
+<FONT color="green">204</FONT>    <a name="line.204"></a>
+<FONT color="green">205</FONT>        /**<a name="line.205"></a>
+<FONT color="green">206</FONT>         * Tests whether or not the parent classloader should be checked for<a name="line.206"></a>
+<FONT color="green">207</FONT>         * a resource before this one. If the resource matches both the<a name="line.207"></a>
+<FONT color="green">208</FONT>         * "use parent classloader first" and the "use this classloader first"<a name="line.208"></a>
+<FONT color="green">209</FONT>         * lists, the latter takes priority.<a name="line.209"></a>
+<FONT color="green">210</FONT>         *<a name="line.210"></a>
+<FONT color="green">211</FONT>         * @param resourceName The name of the resource to check.<a name="line.211"></a>
+<FONT color="green">212</FONT>         *                     Must not be &lt;code&gt;null&lt;/code&gt;.<a name="line.212"></a>
+<FONT color="green">213</FONT>         *<a name="line.213"></a>
+<FONT color="green">214</FONT>         * @return whether or not the parent classloader should be checked for a<a name="line.214"></a>
+<FONT color="green">215</FONT>         *         resource before this one is.<a name="line.215"></a>
+<FONT color="green">216</FONT>         */<a name="line.216"></a>
+<FONT color="green">217</FONT>        private synchronized boolean isParentFirst(String resourceName) {<a name="line.217"></a>
+<FONT color="green">218</FONT>            // default to the global setting and then see<a name="line.218"></a>
+<FONT color="green">219</FONT>            // if this class belongs to a package which has been<a name="line.219"></a>
+<FONT color="green">220</FONT>            // designated to use a specific loader first<a name="line.220"></a>
+<FONT color="green">221</FONT>            // (this one or the parent one)<a name="line.221"></a>
+<FONT color="green">222</FONT>    <a name="line.222"></a>
+<FONT color="green">223</FONT>            // XXX - shouldn't this always return false in isolated mode?<a name="line.223"></a>
+<FONT color="green">224</FONT>    <a name="line.224"></a>
+<FONT color="green">225</FONT>            boolean useParentFirst = parentFirst;<a name="line.225"></a>
+<FONT color="green">226</FONT>    <a name="line.226"></a>
+<FONT color="green">227</FONT>            for (final String packageName : systemPackages) {<a name="line.227"></a>
+<FONT color="green">228</FONT>                if (resourceName.startsWith(packageName)) {<a name="line.228"></a>
+<FONT color="green">229</FONT>                    useParentFirst = true;<a name="line.229"></a>
+<FONT color="green">230</FONT>                    break;<a name="line.230"></a>
+<FONT color="green">231</FONT>                }<a name="line.231"></a>
+<FONT color="green">232</FONT>            }<a name="line.232"></a>
+<FONT color="green">233</FONT>    <a name="line.233"></a>
+<FONT color="green">234</FONT>            for (final String packageName : loaderPackages) {<a name="line.234"></a>
+<FONT color="green">235</FONT>                if (resourceName.startsWith(packageName)) {<a name="line.235"></a>
+<FONT color="green">236</FONT>                    useParentFirst = false;<a name="line.236"></a>
+<FONT color="green">237</FONT>                    break;<a name="line.237"></a>
+<FONT color="green">238</FONT>                }<a name="line.238"></a>
+<FONT color="green">239</FONT>            }<a name="line.239"></a>
+<FONT color="green">240</FONT>    <a name="line.240"></a>
+<FONT color="green">241</FONT>            return useParentFirst;<a name="line.241"></a>
+<FONT color="green">242</FONT>        }<a name="line.242"></a>
+<FONT color="green">243</FONT>    <a name="line.243"></a>
+<FONT color="green">244</FONT>        /**<a name="line.244"></a>
+<FONT color="green">245</FONT>         * Loads a class with this class loader.<a name="line.245"></a>
+<FONT color="green">246</FONT>         *<a name="line.246"></a>
+<FONT color="green">247</FONT>         * This class attempts to load the class in an order determined by whether<a name="line.247"></a>
+<FONT color="green">248</FONT>         * or not the class matches the system/loader package lists, with the<a name="line.248"></a>
+<FONT color="green">249</FONT>         * loader package list taking priority. If the classloader is in isolated<a name="line.249"></a>
+<FONT color="green">250</FONT>         * mode, failure to load the class in this loader will result in a<a name="line.250"></a>
+<FONT color="green">251</FONT>         * ClassNotFoundException.<a name="line.251"></a>
+<FONT color="green">252</FONT>         *<a name="line.252"></a>
+<FONT color="green">253</FONT>         * @param classname The name of the class to be loaded.<a name="line.253"></a>
+<FONT color="green">254</FONT>         *                  Must not be &lt;code&gt;null&lt;/code&gt;.<a name="line.254"></a>
+<FONT color="green">255</FONT>         * @param resolve &lt;code&gt;true&lt;/code&gt; if all classes upon which this class<a name="line.255"></a>
+<FONT color="green">256</FONT>         *                depends are to be loaded.<a name="line.256"></a>
+<FONT color="green">257</FONT>         *<a name="line.257"></a>
+<FONT color="green">258</FONT>         * @return the required Class object<a name="line.258"></a>
+<FONT color="green">259</FONT>         *<a name="line.259"></a>
+<FONT color="green">260</FONT>         * @exception ClassNotFoundException if the requested class does not exist<a name="line.260"></a>
+<FONT color="green">261</FONT>         * on the system classpath (when not in isolated mode) or this loader's<a name="line.261"></a>
+<FONT color="green">262</FONT>         * classpath.<a name="line.262"></a>
+<FONT color="green">263</FONT>         */<a name="line.263"></a>
+<FONT color="green">264</FONT>        protected synchronized Class&lt;?&gt; loadClass(String classname, boolean resolve)<a name="line.264"></a>
+<FONT color="green">265</FONT>             throws ClassNotFoundException {<a name="line.265"></a>
+<FONT color="green">266</FONT>            // 'sync' is needed - otherwise 2 threads can load the same class<a name="line.266"></a>
+<FONT color="green">267</FONT>            // twice, resulting in LinkageError: duplicated class definition.<a name="line.267"></a>
+<FONT color="green">268</FONT>            // findLoadedClass avoids that, but without sync it won't work.<a name="line.268"></a>
+<FONT color="green">269</FONT>    <a name="line.269"></a>
+<FONT color="green">270</FONT>            Class&lt;?&gt; theClass = findLoadedClass(classname);<a name="line.270"></a>
+<FONT color="green">271</FONT>            if (theClass != null) {<a name="line.271"></a>
+<FONT color="green">272</FONT>                return theClass;<a name="line.272"></a>
+<FONT color="green">273</FONT>            }<a name="line.273"></a>
+<FONT color="green">274</FONT>    <a name="line.274"></a>
+<FONT color="green">275</FONT>            if (isParentFirst(classname)) {<a name="line.275"></a>
+<FONT color="green">276</FONT>                try {<a name="line.276"></a>
+<FONT color="green">277</FONT>                    theClass = getParent().loadClass(classname);<a name="line.277"></a>
+<FONT color="green">278</FONT>                    log.debug("Class " + classname + " loaded from parent loader "<a name="line.278"></a>
+<FONT color="green">279</FONT>                        + "(parentFirst)");<a name="line.279"></a>
+<FONT color="green">280</FONT>                } catch (ClassNotFoundException cnfe) {<a name="line.280"></a>
+<FONT color="green">281</FONT>                    theClass = findClass(classname);<a name="line.281"></a>
+<FONT color="green">282</FONT>                    log.debug("Class " + classname + " loaded from ant loader "<a name="line.282"></a>
+<FONT color="green">283</FONT>                        + "(parentFirst)");<a name="line.283"></a>
+<FONT color="green">284</FONT>                }<a name="line.284"></a>
+<FONT color="green">285</FONT>            } else {<a name="line.285"></a>
+<FONT color="green">286</FONT>                try {<a name="line.286"></a>
+<FONT color="green">287</FONT>                    theClass = findClass(classname);<a name="line.287"></a>
+<FONT color="green">288</FONT>                    log.debug("Class " + classname + " loaded from ant loader");<a name="line.288"></a>
+<FONT color="green">289</FONT>                } catch (ClassNotFoundException cnfe) {<a name="line.289"></a>
+<FONT color="green">290</FONT>                    if (ignoreBase) {<a name="line.290"></a>
+<FONT color="green">291</FONT>                        throw cnfe;<a name="line.291"></a>
+<FONT color="green">292</FONT>                    }<a name="line.292"></a>
+<FONT color="green">293</FONT>                    theClass = getParent().loadClass(classname);<a name="line.293"></a>
+<FONT color="green">294</FONT>                    log.debug("Class " + classname + " loaded from parent loader");<a name="line.294"></a>
+<FONT color="green">295</FONT>                }<a name="line.295"></a>
+<FONT color="green">296</FONT>            }<a name="line.296"></a>
+<FONT color="green">297</FONT>    <a name="line.297"></a>
+<FONT color="green">298</FONT>            if (resolve) {<a name="line.298"></a>
+<FONT color="green">299</FONT>                resolveClass(theClass);<a name="line.299"></a>
+<FONT color="green">300</FONT>            }<a name="line.300"></a>
+<FONT color="green">301</FONT>    <a name="line.301"></a>
+<FONT color="green">302</FONT>            return theClass;<a name="line.302"></a>
+<FONT color="green">303</FONT>        }<a name="line.303"></a>
+<FONT color="green">304</FONT>    <a name="line.304"></a>
+<FONT color="green">305</FONT>        /**<a name="line.305"></a>
+<FONT color="green">306</FONT>         * Define a class given its bytes<a name="line.306"></a>
+<FONT color="green">307</FONT>         *<a name="line.307"></a>
+<FONT color="green">308</FONT>         * @param classData the bytecode data for the class<a name="line.308"></a>
+<FONT color="green">309</FONT>         * @param classname the name of the class<a name="line.309"></a>
+<FONT color="green">310</FONT>         *<a name="line.310"></a>
+<FONT color="green">311</FONT>         * @return the Class instance created from the given data<a name="line.311"></a>
+<FONT color="green">312</FONT>         */<a name="line.312"></a>
+<FONT color="green">313</FONT>        protected Class&lt;?&gt; defineClassFromData(final byte[] classData, final String classname) {<a name="line.313"></a>
+<FONT color="green">314</FONT>            return AccessController.doPrivileged(new PrivilegedAction&lt;Class&lt;?&gt;&gt;() {<a name="line.314"></a>
+<FONT color="green">315</FONT>                public Class&lt;?&gt; run() {<a name="line.315"></a>
+<FONT color="green">316</FONT>                    // define a package if necessary.<a name="line.316"></a>
+<FONT color="green">317</FONT>                    int i = classname.lastIndexOf('.');<a name="line.317"></a>
+<FONT color="green">318</FONT>                    if (i&gt;0) {<a name="line.318"></a>
+<FONT color="green">319</FONT>                        final String packageName = classname.substring(0,i);<a name="line.319"></a>
+<FONT color="green">320</FONT>                        final Package pkg = getPackage(packageName);<a name="line.320"></a>
+<FONT color="green">321</FONT>                        if (pkg == null) {<a name="line.321"></a>
+<FONT color="green">322</FONT>                            definePackage(packageName,null,null,null,null,null,null,null);<a name="line.322"></a>
+<FONT color="green">323</FONT>                        }<a name="line.323"></a>
+<FONT color="green">324</FONT>                    }<a name="line.324"></a>
+<FONT color="green">325</FONT>    <a name="line.325"></a>
+<FONT color="green">326</FONT>                    final byte[] newData = transformer.transform(classData);<a name="line.326"></a>
+<FONT color="green">327</FONT>                    final ProtectionDomain domain = this.getClass().getProtectionDomain();<a name="line.327"></a>
+<FONT color="green">328</FONT>                    return defineClass(classname,newData,0,newData.length,domain);<a name="line.328"></a>
+<FONT color="green">329</FONT>                }<a name="line.329"></a>
+<FONT color="green">330</FONT>            }, acc);<a name="line.330"></a>
+<FONT color="green">331</FONT>        }<a name="line.331"></a>
+<FONT color="green">332</FONT>    <a name="line.332"></a>
+<FONT color="green">333</FONT>        /**<a name="line.333"></a>
+<FONT color="green">334</FONT>         * Reads a class definition from a stream.<a name="line.334"></a>
+<FONT color="green">335</FONT>         *<a name="line.335"></a>
+<FONT color="green">336</FONT>         * @param stream The stream from which the class is to be read.<a name="line.336"></a>
+<FONT color="green">337</FONT>         *               Must not be &lt;code&gt;null&lt;/code&gt;.<a name="line.337"></a>
+<FONT color="green">338</FONT>         * @param classname The name of the class in the stream.<a name="line.338"></a>
+<FONT color="green">339</FONT>         *                  Must not be &lt;code&gt;null&lt;/code&gt;.<a name="line.339"></a>
+<FONT color="green">340</FONT>         *<a name="line.340"></a>
+<FONT color="green">341</FONT>         * @return the Class object read from the stream.<a name="line.341"></a>
+<FONT color="green">342</FONT>         *<a name="line.342"></a>
+<FONT color="green">343</FONT>         * @exception IOException if there is a problem reading the class from the<a name="line.343"></a>
+<FONT color="green">344</FONT>         * stream.<a name="line.344"></a>
+<FONT color="green">345</FONT>         * @exception SecurityException if there is a security problem while<a name="line.345"></a>
+<FONT color="green">346</FONT>         * reading the class from the stream.<a name="line.346"></a>
+<FONT color="green">347</FONT>         */<a name="line.347"></a>
+<FONT color="green">348</FONT>        private Class&lt;?&gt; getClassFromStream(InputStream stream, String classname) throws IOException, SecurityException {<a name="line.348"></a>
+<FONT color="green">349</FONT>    <a name="line.349"></a>
+<FONT color="green">350</FONT>            final ByteArrayOutputStream baos = new ByteArrayOutputStream();<a name="line.350"></a>
+<FONT color="green">351</FONT>            try {<a name="line.351"></a>
+<FONT color="green">352</FONT>                    <a name="line.352"></a>
+<FONT color="green">353</FONT>                    int bytesRead;<a name="line.353"></a>
+<FONT color="green">354</FONT>                    byte[] buffer = new byte[BUFFER_SIZE];<a name="line.354"></a>
+<FONT color="green">355</FONT>            <a name="line.355"></a>
+<FONT color="green">356</FONT>                    while ((bytesRead = stream.read(buffer, 0, BUFFER_SIZE)) != -1) {<a name="line.356"></a>
+<FONT color="green">357</FONT>                        baos.write(buffer, 0, bytesRead);<a name="line.357"></a>
+<FONT color="green">358</FONT>                    }<a name="line.358"></a>
+<FONT color="green">359</FONT>            <a name="line.359"></a>
+<FONT color="green">360</FONT>                    byte[] classData = baos.toByteArray();<a name="line.360"></a>
+<FONT color="green">361</FONT>                    return defineClassFromData(classData, classname);<a name="line.361"></a>
+<FONT color="green">362</FONT>            <a name="line.362"></a>
+<FONT color="green">363</FONT>            } finally {<a name="line.363"></a>
+<FONT color="green">364</FONT>                    baos.close();<a name="line.364"></a>
+<FONT color="green">365</FONT>            }<a name="line.365"></a>
+<FONT color="green">366</FONT>        }<a name="line.366"></a>
+<FONT color="green">367</FONT>    <a name="line.367"></a>
+<FONT color="green">368</FONT>        /**<a name="line.368"></a>
+<FONT color="green">369</FONT>         * Searches for and load a class on the classpath of this class loader.<a name="line.369"></a>
+<FONT color="green">370</FONT>         *<a name="line.370"></a>
+<FONT color="green">371</FONT>         * @param name The name of the class to be loaded. Must not be<a name="line.371"></a>
+<FONT color="green">372</FONT>         *             &lt;code&gt;null&lt;/code&gt;.<a name="line.372"></a>
+<FONT color="green">373</FONT>         *<a name="line.373"></a>
+<FONT color="green">374</FONT>         * @return the required Class object<a name="line.374"></a>
+<FONT color="green">375</FONT>         *<a name="line.375"></a>
+<FONT color="green">376</FONT>         * @exception ClassNotFoundException if the requested class does not exist<a name="line.376"></a>
+<FONT color="green">377</FONT>         *                                   on this loader's classpath.<a name="line.377"></a>
+<FONT color="green">378</FONT>         */<a name="line.378"></a>
+<FONT color="green">379</FONT>        public Class&lt;?&gt; findClass(final String name) throws ClassNotFoundException {<a name="line.379"></a>
+<FONT color="green">380</FONT>            log.debug("Finding class " + name);<a name="line.380"></a>
+<FONT color="green">381</FONT>    <a name="line.381"></a>
+<FONT color="green">382</FONT>            // locate the class file<a name="line.382"></a>
+<FONT color="green">383</FONT>            String classFileName = name.replace('.', '/') + ".class";<a name="line.383"></a>
+<FONT color="green">384</FONT>    <a name="line.384"></a>
+<FONT color="green">385</FONT>            InputStream stream = getResourceAsStream(classFileName);<a name="line.385"></a>
+<FONT color="green">386</FONT>            if(stream==null)<a name="line.386"></a>
+<FONT color="green">387</FONT>                throw new ClassNotFoundException(name);<a name="line.387"></a>
+<FONT color="green">388</FONT>    <a name="line.388"></a>
+<FONT color="green">389</FONT>            try {<a name="line.389"></a>
+<FONT color="green">390</FONT>                return getClassFromStream(stream, name);<a name="line.390"></a>
+<FONT color="green">391</FONT>            } catch (IOException e) {<a name="line.391"></a>
+<FONT color="green">392</FONT>                throw new ClassNotFoundException(name,e);<a name="line.392"></a>
+<FONT color="green">393</FONT>            } finally {<a name="line.393"></a>
+<FONT color="green">394</FONT>                try {<a name="line.394"></a>
+<FONT color="green">395</FONT>                    stream.close();<a name="line.395"></a>
+<FONT color="green">396</FONT>                } catch (IOException e) {<a name="line.396"></a>
+<FONT color="green">397</FONT>                    // ignore<a name="line.397"></a>
+<FONT color="green">398</FONT>                }<a name="line.398"></a>
+<FONT color="green">399</FONT>            }<a name="line.399"></a>
+<FONT color="green">400</FONT>        }<a name="line.400"></a>
+<FONT color="green">401</FONT>    <a name="line.401"></a>
+<FONT color="green">402</FONT>        /**<a name="line.402"></a>
+<FONT color="green">403</FONT>         * Finds the resource with the given name. A resource is<a name="line.403"></a>
+<FONT color="green">404</FONT>         * some data (images, audio, text, etc) that can be accessed by class<a name="line.404"></a>
+<FONT color="green">405</FONT>         * code in a way that is independent of the location of the code.<a name="line.405"></a>
+<FONT color="green">406</FONT>         *<a name="line.406"></a>
+<FONT color="green">407</FONT>         * @param name The name of the resource for which a stream is required.<a name="line.407"></a>
+<FONT color="green">408</FONT>         *             Must not be &lt;code&gt;null&lt;/code&gt;.<a name="line.408"></a>
+<FONT color="green">409</FONT>         * @return a URL for reading the resource, or &lt;code&gt;null&lt;/code&gt; if the<a name="line.409"></a>
+<FONT color="green">410</FONT>         *         resource could not be found or the caller doesn't have<a name="line.410"></a>
+<FONT color="green">411</FONT>         *         adequate privileges to get the resource.<a name="line.411"></a>
+<FONT color="green">412</FONT>         */<a name="line.412"></a>
+<FONT color="green">413</FONT>        public synchronized URL getResource(String name) {<a name="line.413"></a>
+<FONT color="green">414</FONT>            // we need to search the components of the path to see if<a name="line.414"></a>
+<FONT color="green">415</FONT>            // we can find the class we want.<a name="line.415"></a>
+<FONT color="green">416</FONT>            if (isParentFirst(name)) {<a name="line.416"></a>
+<FONT color="green">417</FONT>                return super.getResource(name);<a name="line.417"></a>
+<FONT color="green">418</FONT>            }<a name="line.418"></a>
+<FONT color="green">419</FONT>    <a name="line.419"></a>
+<FONT color="green">420</FONT>            // try this class loader first, then parent<a name="line.420"></a>
+<FONT color="green">421</FONT>            URL url = findResource(name);<a name="line.421"></a>
+<FONT color="green">422</FONT>            if(url==null) {<a name="line.422"></a>
+<FONT color="green">423</FONT>                url = getParent().getResource(name);<a name="line.423"></a>
+<FONT color="green">424</FONT>            }<a name="line.424"></a>
+<FONT color="green">425</FONT>            return url;<a name="line.425"></a>
+<FONT color="green">426</FONT>        }<a name="line.426"></a>
+<FONT color="green">427</FONT>    }<a name="line.427"></a>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</PRE>
+</BODY>
+</HTML>

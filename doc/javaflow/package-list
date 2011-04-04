@@ -1,0 +1,9 @@
+org.apache.commons.javaflow
+org.apache.commons.javaflow.ant
+org.apache.commons.javaflow.bytecode
+org.apache.commons.javaflow.bytecode.transformation
+org.apache.commons.javaflow.bytecode.transformation.asm
+org.apache.commons.javaflow.bytecode.transformation.bcel
+org.apache.commons.javaflow.bytecode.transformation.bcel.analyser
+org.apache.commons.javaflow.stores
+org.apache.commons.javaflow.utils

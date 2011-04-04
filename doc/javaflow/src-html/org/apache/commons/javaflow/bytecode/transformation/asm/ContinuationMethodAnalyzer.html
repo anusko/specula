@@ -1,0 +1,396 @@
+<HTML>
+<BODY BGCOLOR="white">
+<PRE>
+<FONT color="green">001</FONT>    /*<a name="line.1"></a>
+<FONT color="green">002</FONT>     * Licensed to the Apache Software Foundation (ASF) under one or more<a name="line.2"></a>
+<FONT color="green">003</FONT>     * contributor license agreements.  See the NOTICE file distributed with<a name="line.3"></a>
+<FONT color="green">004</FONT>     * this work for additional information regarding copyright ownership.<a name="line.4"></a>
+<FONT color="green">005</FONT>     * The ASF licenses this file to You under the Apache License, Version 2.0<a name="line.5"></a>
+<FONT color="green">006</FONT>     * (the "License"); you may not use this file except in compliance with<a name="line.6"></a>
+<FONT color="green">007</FONT>     * the License.  You may obtain a copy of the License at<a name="line.7"></a>
+<FONT color="green">008</FONT>     *<a name="line.8"></a>
+<FONT color="green">009</FONT>     *      http://www.apache.org/licenses/LICENSE-2.0<a name="line.9"></a>
+<FONT color="green">010</FONT>     *<a name="line.10"></a>
+<FONT color="green">011</FONT>     * Unless required by applicable law or agreed to in writing, software<a name="line.11"></a>
+<FONT color="green">012</FONT>     * distributed under the License is distributed on an "AS IS" BASIS,<a name="line.12"></a>
+<FONT color="green">013</FONT>     * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.<a name="line.13"></a>
+<FONT color="green">014</FONT>     * See the License for the specific language governing permissions and<a name="line.14"></a>
+<FONT color="green">015</FONT>     * limitations under the License.<a name="line.15"></a>
+<FONT color="green">016</FONT>     */<a name="line.16"></a>
+<FONT color="green">017</FONT>    package org.apache.commons.javaflow.bytecode.transformation.asm;<a name="line.17"></a>
+<FONT color="green">018</FONT>    <a name="line.18"></a>
+<FONT color="green">019</FONT>    import java.util.ArrayList;<a name="line.19"></a>
+<FONT color="green">020</FONT>    import java.util.HashMap;<a name="line.20"></a>
+<FONT color="green">021</FONT>    import java.util.List;<a name="line.21"></a>
+<FONT color="green">022</FONT>    import java.util.Map;<a name="line.22"></a>
+<FONT color="green">023</FONT>    import java.util.Set;<a name="line.23"></a>
+<FONT color="green">024</FONT>    <a name="line.24"></a>
+<FONT color="green">025</FONT>    import org.objectweb.asm.ClassVisitor;<a name="line.25"></a>
+<FONT color="green">026</FONT>    import org.objectweb.asm.Label;<a name="line.26"></a>
+<FONT color="green">027</FONT>    import org.objectweb.asm.MethodVisitor;<a name="line.27"></a>
+<FONT color="green">028</FONT>    import org.objectweb.asm.Opcodes;<a name="line.28"></a>
+<FONT color="green">029</FONT>    import org.objectweb.asm.Type;<a name="line.29"></a>
+<FONT color="green">030</FONT>    import org.objectweb.asm.tree.AbstractInsnNode;<a name="line.30"></a>
+<FONT color="green">031</FONT>    import org.objectweb.asm.tree.InsnNode;<a name="line.31"></a>
+<FONT color="green">032</FONT>    import org.objectweb.asm.tree.InsnList;<a name="line.32"></a>
+<FONT color="green">033</FONT>    import org.objectweb.asm.tree.MethodInsnNode;<a name="line.33"></a>
+<FONT color="green">034</FONT>    import org.objectweb.asm.tree.MethodNode;<a name="line.34"></a>
+<FONT color="green">035</FONT>    import org.objectweb.asm.tree.VarInsnNode;<a name="line.35"></a>
+<FONT color="green">036</FONT>    import org.objectweb.asm.tree.analysis.Analyzer;<a name="line.36"></a>
+<FONT color="green">037</FONT>    import org.objectweb.asm.tree.analysis.AnalyzerException;<a name="line.37"></a>
+<FONT color="green">038</FONT>    import org.objectweb.asm.tree.analysis.Frame;<a name="line.38"></a>
+<FONT color="green">039</FONT>    import org.objectweb.asm.tree.analysis.SimpleVerifier;<a name="line.39"></a>
+<FONT color="green">040</FONT>    import org.objectweb.asm.tree.analysis.SourceInterpreter;<a name="line.40"></a>
+<FONT color="green">041</FONT>    import org.objectweb.asm.tree.analysis.SourceValue;<a name="line.41"></a>
+<FONT color="green">042</FONT>    <a name="line.42"></a>
+<FONT color="green">043</FONT>    public class ContinuationMethodAnalyzer extends MethodNode implements Opcodes {<a name="line.43"></a>
+<FONT color="green">044</FONT>    <a name="line.44"></a>
+<FONT color="green">045</FONT>        protected final String className;<a name="line.45"></a>
+<FONT color="green">046</FONT>        protected final ClassVisitor cv;<a name="line.46"></a>
+<FONT color="green">047</FONT>        protected final MethodVisitor mv;<a name="line.47"></a>
+<FONT color="green">048</FONT>    <a name="line.48"></a>
+<FONT color="green">049</FONT>        protected final List&lt;Label&gt; labels = new ArrayList&lt;Label&gt;();<a name="line.49"></a>
+<FONT color="green">050</FONT>        protected final List&lt;MethodInsnNode&gt; nodes = new ArrayList&lt;MethodInsnNode&gt;();<a name="line.50"></a>
+<FONT color="green">051</FONT>        protected final List&lt;MethodInsnNode&gt; methods = new ArrayList&lt;MethodInsnNode&gt;();<a name="line.51"></a>
+<FONT color="green">052</FONT>    <a name="line.52"></a>
+<FONT color="green">053</FONT>        protected Analyzer analyzer;<a name="line.53"></a>
+<FONT color="green">054</FONT>        public int stackRecorderVar;<a name="line.54"></a>
+<FONT color="green">055</FONT>    <a name="line.55"></a>
+<FONT color="green">056</FONT>        public ContinuationMethodAnalyzer(String className, ClassVisitor cv, MethodVisitor mv, int access, String name, String desc, String signature, String[] exceptions) {<a name="line.56"></a>
+<FONT color="green">057</FONT>            super(access, name, desc, signature, exceptions);<a name="line.57"></a>
+<FONT color="green">058</FONT>            this.className = className;<a name="line.58"></a>
+<FONT color="green">059</FONT>            this.cv = cv;<a name="line.59"></a>
+<FONT color="green">060</FONT>            this.mv = mv;<a name="line.60"></a>
+<FONT color="green">061</FONT>        }<a name="line.61"></a>
+<FONT color="green">062</FONT>    <a name="line.62"></a>
+<FONT color="green">063</FONT>        public int getIndex(AbstractInsnNode node) {<a name="line.63"></a>
+<FONT color="green">064</FONT>            return instructions.indexOf(node);<a name="line.64"></a>
+<FONT color="green">065</FONT>        }<a name="line.65"></a>
+<FONT color="green">066</FONT>    <a name="line.66"></a>
+<FONT color="green">067</FONT>        public void visitMethodInsn(int opcode, String owner, String name, String desc) {<a name="line.67"></a>
+<FONT color="green">068</FONT>            MethodInsnNode mnode = new MethodInsnNode(opcode, owner, name, desc);<a name="line.68"></a>
+<FONT color="green">069</FONT>            if (opcode == INVOKESPECIAL || "&lt;init&gt;".equals(name)) {<a name="line.69"></a>
+<FONT color="green">070</FONT>                methods.add(mnode);<a name="line.70"></a>
+<FONT color="green">071</FONT>            }<a name="line.71"></a>
+<FONT color="green">072</FONT>            if (needsFrameGuard(opcode, owner, name, desc) /* &amp;&amp; transformer.inScope(owner, name)*/) {<a name="line.72"></a>
+<FONT color="green">073</FONT>                Label label = new Label();<a name="line.73"></a>
+<FONT color="green">074</FONT>                super.visitLabel(label);<a name="line.74"></a>
+<FONT color="green">075</FONT>                labels.add(label);<a name="line.75"></a>
+<FONT color="green">076</FONT>                nodes.add(mnode);<a name="line.76"></a>
+<FONT color="green">077</FONT>            }<a name="line.77"></a>
+<FONT color="green">078</FONT>            instructions.add(mnode);<a name="line.78"></a>
+<FONT color="green">079</FONT>        }<a name="line.79"></a>
+<FONT color="green">080</FONT>    <a name="line.80"></a>
+<FONT color="green">081</FONT>        public void visitEnd() {<a name="line.81"></a>
+<FONT color="green">082</FONT>            if (instructions.size() == 0 || labels.size() == 0) {<a name="line.82"></a>
+<FONT color="green">083</FONT>                accept(mv);<a name="line.83"></a>
+<FONT color="green">084</FONT>                return;<a name="line.84"></a>
+<FONT color="green">085</FONT>            }<a name="line.85"></a>
+<FONT color="green">086</FONT>    <a name="line.86"></a>
+<FONT color="green">087</FONT>            /*<a name="line.87"></a>
+<FONT color="green">088</FONT>            {<a name="line.88"></a>
+<FONT color="green">089</FONT>                      TraceMethodVisitor mv = new TraceMethodVisitor();<a name="line.89"></a>
+<FONT color="green">090</FONT>                      System.err.println(name + desc);<a name="line.90"></a>
+<FONT color="green">091</FONT>                      for (int j = 0; j &lt; instructions.size(); ++j) {<a name="line.91"></a>
+<FONT color="green">092</FONT>                          ((AbstractInsnNode) instructions.get(j)).accept(mv);<a name="line.92"></a>
+<FONT color="green">093</FONT>                          System.err.print("   " + mv.text.get(j)); // mv.text.get(j));<a name="line.93"></a>
+<FONT color="green">094</FONT>                      }<a name="line.94"></a>
+<FONT color="green">095</FONT>                      System.err.println();<a name="line.95"></a>
+<FONT color="green">096</FONT>            }<a name="line.96"></a>
+<FONT color="green">097</FONT>            */<a name="line.97"></a>
+<FONT color="green">098</FONT>    <a name="line.98"></a>
+<FONT color="green">099</FONT>            this.stackRecorderVar = maxLocals;<a name="line.99"></a>
+<FONT color="green">100</FONT>            try {<a name="line.100"></a>
+<FONT color="green">101</FONT>                moveNew();<a name="line.101"></a>
+<FONT color="green">102</FONT>    <a name="line.102"></a>
+<FONT color="green">103</FONT>                // analyzer = new Analyzer(new BasicVerifier());<a name="line.103"></a>
+<FONT color="green">104</FONT>                analyzer = new Analyzer(new SimpleVerifier() {<a name="line.104"></a>
+<FONT color="green">105</FONT>    <a name="line.105"></a>
+<FONT color="green">106</FONT>                    protected Class&lt;?&gt; getClass(Type t) {<a name="line.106"></a>
+<FONT color="green">107</FONT>                        try {<a name="line.107"></a>
+<FONT color="green">108</FONT>                            if (t.getSort() == Type.ARRAY) {<a name="line.108"></a>
+<FONT color="green">109</FONT>                                return Class.forName(t.getDescriptor().replace('/', '.'), true, Thread.currentThread().getContextClassLoader());<a name="line.109"></a>
+<FONT color="green">110</FONT>                            }<a name="line.110"></a>
+<FONT color="green">111</FONT>                            return Class.forName(t.getClassName(), true, Thread.currentThread().getContextClassLoader());<a name="line.111"></a>
+<FONT color="green">112</FONT>                        } catch (ClassNotFoundException e) {<a name="line.112"></a>
+<FONT color="green">113</FONT>                            throw new RuntimeException(e.toString());<a name="line.113"></a>
+<FONT color="green">114</FONT>                        }<a name="line.114"></a>
+<FONT color="green">115</FONT>                    }<a name="line.115"></a>
+<FONT color="green">116</FONT>                }) {<a name="line.116"></a>
+<FONT color="green">117</FONT>    <a name="line.117"></a>
+<FONT color="green">118</FONT>                    protected Frame newFrame(final int nLocals, final int nStack) {<a name="line.118"></a>
+<FONT color="green">119</FONT>                        return new MonitoringFrame(nLocals, nStack);<a name="line.119"></a>
+<FONT color="green">120</FONT>                    }<a name="line.120"></a>
+<FONT color="green">121</FONT>    <a name="line.121"></a>
+<FONT color="green">122</FONT>                    protected Frame newFrame(final Frame src) {<a name="line.122"></a>
+<FONT color="green">123</FONT>                        return new MonitoringFrame(src);<a name="line.123"></a>
+<FONT color="green">124</FONT>                    }<a name="line.124"></a>
+<FONT color="green">125</FONT>    <a name="line.125"></a>
+<FONT color="green">126</FONT>                    public Frame[] analyze(final String owner, final MethodNode m) throws AnalyzerException {<a name="line.126"></a>
+<FONT color="green">127</FONT>                        // System.out.println("Analyze: "+owner+"|"+m.name+"|"+m.signature+"|"+m.tryCatchBlocks);<a name="line.127"></a>
+<FONT color="green">128</FONT>                        final Frame[] frames = super.analyze(owner, m);<a name="line.128"></a>
+<FONT color="green">129</FONT>                        for (int i = 0; i &lt; m.instructions.size(); i++) {<a name="line.129"></a>
+<FONT color="green">130</FONT>                            int opcode = m.instructions.get(i).getOpcode();<a name="line.130"></a>
+<FONT color="green">131</FONT>                            if (opcode == MONITORENTER || opcode == MONITOREXIT) {<a name="line.131"></a>
+<FONT color="green">132</FONT>                                // System.out.println(i);<a name="line.132"></a>
+<FONT color="green">133</FONT>                            }<a name="line.133"></a>
+<FONT color="green">134</FONT>                        }<a name="line.134"></a>
+<FONT color="green">135</FONT>                        return frames;<a name="line.135"></a>
+<FONT color="green">136</FONT>                    }<a name="line.136"></a>
+<FONT color="green">137</FONT>                };<a name="line.137"></a>
+<FONT color="green">138</FONT>    <a name="line.138"></a>
+<FONT color="green">139</FONT>                analyzer.analyze(className, this);<a name="line.139"></a>
+<FONT color="green">140</FONT>                accept(new ContinuationMethodAdapter(this));<a name="line.140"></a>
+<FONT color="green">141</FONT>    <a name="line.141"></a>
+<FONT color="green">142</FONT>                /*<a name="line.142"></a>
+<FONT color="green">143</FONT>                {<a name="line.143"></a>
+<FONT color="green">144</FONT>                          TraceMethodVisitor mv = new TraceMethodVisitor();<a name="line.144"></a>
+<FONT color="green">145</FONT>                          System.err.println("=================");<a name="line.145"></a>
+<FONT color="green">146</FONT>    <a name="line.146"></a>
+<FONT color="green">147</FONT>                          System.err.println(name + desc);<a name="line.147"></a>
+<FONT color="green">148</FONT>                          for (int j = 0; j &lt; instructions.size(); ++j) {<a name="line.148"></a>
+<FONT color="green">149</FONT>                              ((AbstractInsnNode) instructions.get(j)).accept(mv);<a name="line.149"></a>
+<FONT color="green">150</FONT>                              System.err.print("   " + mv.text.get(j)); // mv.text.get(j));<a name="line.150"></a>
+<FONT color="green">151</FONT>                          }<a name="line.151"></a>
+<FONT color="green">152</FONT>                          System.err.println();<a name="line.152"></a>
+<FONT color="green">153</FONT>                }<a name="line.153"></a>
+<FONT color="green">154</FONT>                */<a name="line.154"></a>
+<FONT color="green">155</FONT>    <a name="line.155"></a>
+<FONT color="green">156</FONT>            } catch (AnalyzerException ex) {<a name="line.156"></a>
+<FONT color="green">157</FONT>                // TODO log the error or fail?<a name="line.157"></a>
+<FONT color="green">158</FONT>                ex.printStackTrace();<a name="line.158"></a>
+<FONT color="green">159</FONT>                accept(mv);<a name="line.159"></a>
+<FONT color="green">160</FONT>    <a name="line.160"></a>
+<FONT color="green">161</FONT>            }<a name="line.161"></a>
+<FONT color="green">162</FONT>        }<a name="line.162"></a>
+<FONT color="green">163</FONT>    <a name="line.163"></a>
+<FONT color="green">164</FONT>        @SuppressWarnings("unchecked")<a name="line.164"></a>
+<FONT color="green">165</FONT>        void moveNew() throws AnalyzerException {<a name="line.165"></a>
+<FONT color="green">166</FONT>            SourceInterpreter i = new SourceInterpreter();<a name="line.166"></a>
+<FONT color="green">167</FONT>            Analyzer a = new Analyzer(i);<a name="line.167"></a>
+<FONT color="green">168</FONT>            a.analyze(className, this);<a name="line.168"></a>
+<FONT color="green">169</FONT>    <a name="line.169"></a>
+<FONT color="green">170</FONT>            final HashMap&lt;AbstractInsnNode, MethodInsnNode&gt; movable = new HashMap&lt;AbstractInsnNode, MethodInsnNode&gt;();<a name="line.170"></a>
+<FONT color="green">171</FONT>    <a name="line.171"></a>
+<FONT color="green">172</FONT>            Frame[] frames = a.getFrames();<a name="line.172"></a>
+<FONT color="green">173</FONT>            for (int j = 0; j &lt; methods.size(); j++) {<a name="line.173"></a>
+<FONT color="green">174</FONT>                MethodInsnNode mnode = methods.get(j);<a name="line.174"></a>
+<FONT color="green">175</FONT>                // require to move NEW instruction<a name="line.175"></a>
+<FONT color="green">176</FONT>                int n = instructions.indexOf(mnode);<a name="line.176"></a>
+<FONT color="green">177</FONT>                Frame f = frames[n];<a name="line.177"></a>
+<FONT color="green">178</FONT>                Type[] args = Type.getArgumentTypes(mnode.desc);<a name="line.178"></a>
+<FONT color="green">179</FONT>    <a name="line.179"></a>
+<FONT color="green">180</FONT>                SourceValue v = (SourceValue) f.getStack(f.getStackSize() - args.length - 1);<a name="line.180"></a>
+<FONT color="green">181</FONT>                Set&lt;AbstractInsnNode&gt; insns = v.insns;<a name="line.181"></a>
+<FONT color="green">182</FONT>                for (final AbstractInsnNode ins : insns) {<a name="line.182"></a>
+<FONT color="green">183</FONT>                    if (ins.getOpcode() == NEW) {<a name="line.183"></a>
+<FONT color="green">184</FONT>                        movable.put(ins, mnode);<a name="line.184"></a>
+<FONT color="green">185</FONT>                    } else {<a name="line.185"></a>
+<FONT color="green">186</FONT>                        // other known patterns<a name="line.186"></a>
+<FONT color="green">187</FONT>                        int n1 = instructions.indexOf(ins);<a name="line.187"></a>
+<FONT color="green">188</FONT>                        if (ins.getOpcode() == DUP) { // &lt;init&gt; with params<a name="line.188"></a>
+<FONT color="green">189</FONT>                            AbstractInsnNode ins1 = instructions.get(n1 - 1);<a name="line.189"></a>
+<FONT color="green">190</FONT>                            if (ins1.getOpcode() == NEW) {<a name="line.190"></a>
+<FONT color="green">191</FONT>                                movable.put(ins1, mnode);<a name="line.191"></a>
+<FONT color="green">192</FONT>                            }<a name="line.192"></a>
+<FONT color="green">193</FONT>                        } else if (ins.getOpcode() == SWAP) { // in exception handler<a name="line.193"></a>
+<FONT color="green">194</FONT>                            AbstractInsnNode ins1 = instructions.get(n1 - 1);<a name="line.194"></a>
+<FONT color="green">195</FONT>                            AbstractInsnNode ins2 = instructions.get(n1 - 2);<a name="line.195"></a>
+<FONT color="green">196</FONT>                            if (ins1.getOpcode() == DUP_X1 &amp;&amp; ins2.getOpcode() == NEW) {<a name="line.196"></a>
+<FONT color="green">197</FONT>                                movable.put(ins2, mnode);<a name="line.197"></a>
+<FONT color="green">198</FONT>                            }<a name="line.198"></a>
+<FONT color="green">199</FONT>                        }<a name="line.199"></a>
+<FONT color="green">200</FONT>                    }<a name="line.200"></a>
+<FONT color="green">201</FONT>                }<a name="line.201"></a>
+<FONT color="green">202</FONT>            }<a name="line.202"></a>
+<FONT color="green">203</FONT>    <a name="line.203"></a>
+<FONT color="green">204</FONT>            int updateMaxStack = 0;<a name="line.204"></a>
+<FONT color="green">205</FONT>            for (final Map.Entry&lt;AbstractInsnNode, MethodInsnNode&gt; e : movable.entrySet()) {<a name="line.205"></a>
+<FONT color="green">206</FONT>                AbstractInsnNode node1 = e.getKey();<a name="line.206"></a>
+<FONT color="green">207</FONT>                int n1 = instructions.indexOf(node1);<a name="line.207"></a>
+<FONT color="green">208</FONT>                AbstractInsnNode node2 = instructions.get(n1 + 1);<a name="line.208"></a>
+<FONT color="green">209</FONT>                AbstractInsnNode node3 = instructions.get(n1 + 2);<a name="line.209"></a>
+<FONT color="green">210</FONT>                int producer = node2.getOpcode();<a name="line.210"></a>
+<FONT color="green">211</FONT>    <a name="line.211"></a>
+<FONT color="green">212</FONT>                instructions.remove(node1); // NEW<a name="line.212"></a>
+<FONT color="green">213</FONT>                boolean requireDup = false;<a name="line.213"></a>
+<FONT color="green">214</FONT>                if (producer == DUP) {<a name="line.214"></a>
+<FONT color="green">215</FONT>                    instructions.remove(node2); // DUP<a name="line.215"></a>
+<FONT color="green">216</FONT>                    requireDup = true;<a name="line.216"></a>
+<FONT color="green">217</FONT>                } else if (producer == DUP_X1) {<a name="line.217"></a>
+<FONT color="green">218</FONT>                    instructions.remove(node2); // DUP_X1<a name="line.218"></a>
+<FONT color="green">219</FONT>                    instructions.remove(node3); // SWAP<a name="line.219"></a>
+<FONT color="green">220</FONT>                    requireDup = true;<a name="line.220"></a>
+<FONT color="green">221</FONT>                }<a name="line.221"></a>
+<FONT color="green">222</FONT>    <a name="line.222"></a>
+<FONT color="green">223</FONT>                MethodInsnNode mnode = (MethodInsnNode) e.getValue();<a name="line.223"></a>
+<FONT color="green">224</FONT>                AbstractInsnNode nm = mnode;<a name="line.224"></a>
+<FONT color="green">225</FONT>    <a name="line.225"></a>
+<FONT color="green">226</FONT>                int varOffset = stackRecorderVar + 1;<a name="line.226"></a>
+<FONT color="green">227</FONT>                Type[] args = Type.getArgumentTypes(mnode.desc);<a name="line.227"></a>
+<FONT color="green">228</FONT>    <a name="line.228"></a>
+<FONT color="green">229</FONT>                // optimizations for some common cases<a name="line.229"></a>
+<FONT color="green">230</FONT>                if (args.length == 0) {<a name="line.230"></a>
+<FONT color="green">231</FONT>                    final InsnList doNew = new InsnList();<a name="line.231"></a>
+<FONT color="green">232</FONT>                    doNew.add(node1); // NEW<a name="line.232"></a>
+<FONT color="green">233</FONT>                    if (requireDup)<a name="line.233"></a>
+<FONT color="green">234</FONT>                        doNew.add(new InsnNode(DUP));<a name="line.234"></a>
+<FONT color="green">235</FONT>                    instructions.insertBefore(nm, doNew);<a name="line.235"></a>
+<FONT color="green">236</FONT>                    nm = doNew.getLast();<a name="line.236"></a>
+<FONT color="green">237</FONT>                    continue;<a name="line.237"></a>
+<FONT color="green">238</FONT>                }<a name="line.238"></a>
+<FONT color="green">239</FONT>    <a name="line.239"></a>
+<FONT color="green">240</FONT>                if (args.length == 1 &amp;&amp; args[0].getSize() == 1) {<a name="line.240"></a>
+<FONT color="green">241</FONT>                    final InsnList doNew = new InsnList();<a name="line.241"></a>
+<FONT color="green">242</FONT>                    doNew.add(node1); // NEW<a name="line.242"></a>
+<FONT color="green">243</FONT>                    if (requireDup) {<a name="line.243"></a>
+<FONT color="green">244</FONT>                        doNew.add(new InsnNode(DUP));<a name="line.244"></a>
+<FONT color="green">245</FONT>                        doNew.add(new InsnNode(DUP2_X1));<a name="line.245"></a>
+<FONT color="green">246</FONT>                        doNew.add(new InsnNode(POP2));<a name="line.246"></a>
+<FONT color="green">247</FONT>                        updateMaxStack = updateMaxStack &lt; 2 ? 2 : updateMaxStack; // a two extra slots for temp values<a name="line.247"></a>
+<FONT color="green">248</FONT>                    } else<a name="line.248"></a>
+<FONT color="green">249</FONT>                        doNew.add(new InsnNode(SWAP));<a name="line.249"></a>
+<FONT color="green">250</FONT>                    instructions.insertBefore(nm, doNew);<a name="line.250"></a>
+<FONT color="green">251</FONT>                    nm = doNew.getLast();<a name="line.251"></a>
+<FONT color="green">252</FONT>                    continue;<a name="line.252"></a>
+<FONT color="green">253</FONT>                }<a name="line.253"></a>
+<FONT color="green">254</FONT>    <a name="line.254"></a>
+<FONT color="green">255</FONT>                // TODO this one untested!<a name="line.255"></a>
+<FONT color="green">256</FONT>                if ((args.length == 1 &amp;&amp; args[0].getSize() == 2) || (args.length == 2 &amp;&amp; args[0].getSize() == 1 &amp;&amp; args[1].getSize() == 1)) {<a name="line.256"></a>
+<FONT color="green">257</FONT>                    final InsnList doNew = new InsnList();<a name="line.257"></a>
+<FONT color="green">258</FONT>                    doNew.add(node1); // NEW<a name="line.258"></a>
+<FONT color="green">259</FONT>                    if (requireDup) {<a name="line.259"></a>
+<FONT color="green">260</FONT>                        doNew.add(new InsnNode(DUP));<a name="line.260"></a>
+<FONT color="green">261</FONT>                        doNew.add(new InsnNode(DUP2_X2));<a name="line.261"></a>
+<FONT color="green">262</FONT>                        doNew.add(new InsnNode(POP2));<a name="line.262"></a>
+<FONT color="green">263</FONT>                        updateMaxStack = updateMaxStack &lt; 2 ? 2 : updateMaxStack; // a two extra slots for temp values<a name="line.263"></a>
+<FONT color="green">264</FONT>                    } else {<a name="line.264"></a>
+<FONT color="green">265</FONT>                        doNew.add(new InsnNode(DUP_X2));<a name="line.265"></a>
+<FONT color="green">266</FONT>                        doNew.add(new InsnNode(POP));<a name="line.266"></a>
+<FONT color="green">267</FONT>                        updateMaxStack = updateMaxStack &lt; 1 ? 1 : updateMaxStack; // an extra slot for temp value<a name="line.267"></a>
+<FONT color="green">268</FONT>                    }<a name="line.268"></a>
+<FONT color="green">269</FONT>                    instructions.insertBefore(nm, doNew);<a name="line.269"></a>
+<FONT color="green">270</FONT>                    nm = doNew.getLast();<a name="line.270"></a>
+<FONT color="green">271</FONT>                    continue;<a name="line.271"></a>
+<FONT color="green">272</FONT>                }<a name="line.272"></a>
+<FONT color="green">273</FONT>    <a name="line.273"></a>
+<FONT color="green">274</FONT>                final InsnList doNew = new InsnList();<a name="line.274"></a>
+<FONT color="green">275</FONT>                // generic code using temporary locals<a name="line.275"></a>
+<FONT color="green">276</FONT>                // save stack<a name="line.276"></a>
+<FONT color="green">277</FONT>                for (int j = args.length - 1; j &gt;= 0; j--) {<a name="line.277"></a>
+<FONT color="green">278</FONT>                    Type type = args[j];<a name="line.278"></a>
+<FONT color="green">279</FONT>    <a name="line.279"></a>
+<FONT color="green">280</FONT>                    doNew.add(new VarInsnNode(type.getOpcode(ISTORE), varOffset));<a name="line.280"></a>
+<FONT color="green">281</FONT>                    varOffset += type.getSize();<a name="line.281"></a>
+<FONT color="green">282</FONT>                }<a name="line.282"></a>
+<FONT color="green">283</FONT>                if (varOffset &gt; maxLocals) {<a name="line.283"></a>
+<FONT color="green">284</FONT>                    maxLocals = varOffset;<a name="line.284"></a>
+<FONT color="green">285</FONT>                }<a name="line.285"></a>
+<FONT color="green">286</FONT>    <a name="line.286"></a>
+<FONT color="green">287</FONT>                doNew.add(node1); // NEW<a name="line.287"></a>
+<FONT color="green">288</FONT>    <a name="line.288"></a>
+<FONT color="green">289</FONT>                if (requireDup)<a name="line.289"></a>
+<FONT color="green">290</FONT>                    doNew.add(new InsnNode(DUP));<a name="line.290"></a>
+<FONT color="green">291</FONT>    <a name="line.291"></a>
+<FONT color="green">292</FONT>                // restore stack<a name="line.292"></a>
+<FONT color="green">293</FONT>                for (int j = 0; j &lt; args.length; j++) {<a name="line.293"></a>
+<FONT color="green">294</FONT>                    Type type = args[j];<a name="line.294"></a>
+<FONT color="green">295</FONT>                    varOffset -= type.getSize();<a name="line.295"></a>
+<FONT color="green">296</FONT>    <a name="line.296"></a>
+<FONT color="green">297</FONT>                    doNew.add(new VarInsnNode(type.getOpcode(ILOAD), varOffset));<a name="line.297"></a>
+<FONT color="green">298</FONT>    <a name="line.298"></a>
+<FONT color="green">299</FONT>                    // clean up store to avoid memory leak?<a name="line.299"></a>
+<FONT color="green">300</FONT>                    if (type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY) {<a name="line.300"></a>
+<FONT color="green">301</FONT>                        updateMaxStack = updateMaxStack &lt; 1 ? 1 : updateMaxStack; // an extra slot for ACONST_NULL<a name="line.301"></a>
+<FONT color="green">302</FONT>    <a name="line.302"></a>
+<FONT color="green">303</FONT>                        doNew.add(new InsnNode(ACONST_NULL));<a name="line.303"></a>
+<FONT color="green">304</FONT>    <a name="line.304"></a>
+<FONT color="green">305</FONT>                        doNew.add(new VarInsnNode(type.getOpcode(ISTORE), varOffset));<a name="line.305"></a>
+<FONT color="green">306</FONT>                    }<a name="line.306"></a>
+<FONT color="green">307</FONT>                }<a name="line.307"></a>
+<FONT color="green">308</FONT>                instructions.insertBefore(nm, doNew);<a name="line.308"></a>
+<FONT color="green">309</FONT>                nm = doNew.getLast();<a name="line.309"></a>
+<FONT color="green">310</FONT>            }<a name="line.310"></a>
+<FONT color="green">311</FONT>    <a name="line.311"></a>
+<FONT color="green">312</FONT>            maxStack += updateMaxStack;<a name="line.312"></a>
+<FONT color="green">313</FONT>        }<a name="line.313"></a>
+<FONT color="green">314</FONT>    <a name="line.314"></a>
+<FONT color="green">315</FONT>        boolean needsFrameGuard(int opcode, String owner, String name, String desc) {<a name="line.315"></a>
+<FONT color="green">316</FONT>            /* TODO: need to customize a way enchancer skips classes/methods<a name="line.316"></a>
+<FONT color="green">317</FONT>                if (owner.startsWith("java/")) {<a name="line.317"></a>
+<FONT color="green">318</FONT>                    System.out.println("SKIP:: " + owner + "." + name + desc);<a name="line.318"></a>
+<FONT color="green">319</FONT>                    return false;<a name="line.319"></a>
+<FONT color="green">320</FONT>                }<a name="line.320"></a>
+<FONT color="green">321</FONT>            */<a name="line.321"></a>
+<FONT color="green">322</FONT>    <a name="line.322"></a>
+<FONT color="green">323</FONT>            if (opcode == Opcodes.INVOKEINTERFACE || (opcode == Opcodes.INVOKESPECIAL &amp;&amp; !"&lt;init&gt;".equals(name)) || opcode == Opcodes.INVOKESTATIC<a name="line.323"></a>
+<FONT color="green">324</FONT>                    || opcode == Opcodes.INVOKEVIRTUAL) {<a name="line.324"></a>
+<FONT color="green">325</FONT>                return true;<a name="line.325"></a>
+<FONT color="green">326</FONT>            }<a name="line.326"></a>
+<FONT color="green">327</FONT>            return false;<a name="line.327"></a>
+<FONT color="green">328</FONT>        }<a name="line.328"></a>
+<FONT color="green">329</FONT>    <a name="line.329"></a>
+<FONT color="green">330</FONT>    }<a name="line.330"></a>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</PRE>
+</BODY>
+</HTML>
