@@ -12,7 +12,6 @@ import org.objectweb.asm.util.CheckClassAdapter;
 
 import util.Log;
 import asmlib.DuplicateMethodChecker;
-import asmlib.GenericMethodVisitorAdapter;
 import asmlib.InfoClass;
 import asmlib.InfoClassAdapter;
 import asmlib.Type;

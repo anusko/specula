@@ -12,6 +12,11 @@ public abstract class RunnableSample implements Runnable {
 		new ThreadLocal<Object>();
 
 	public void run() {
+		if (! (this instanceof Runnable)) {
+			specula$runInContinuation_id();
+			return;
+		}
+		
 		if (specula$inContinuation.get() == null) {
 			try {
 				specula$inContinuation.set(specula$IN_USE);
@@ -32,11 +37,11 @@ public abstract class RunnableSample implements Runnable {
 				specula$inContinuation.set(null);
 			}
 		} else {
-			runInContinuation();
+			specula$runInContinuation_id();
 		}
 	}
 
-	private void runInContinuation() {
+	private void specula$runInContinuation_id() {
 		// the original run() method
 	}
 

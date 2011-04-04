@@ -38,6 +38,14 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 		return true;
 	}
 	
+	/*
+	 * (non-Javadoc)
+	 * @see jvstm.ReadWriteTransaction#setBoxValue(jvstm.VBox, java.lang.Object)
+	 * 
+	 * TODO
+	 * É capaz de ser impossível fazer escritas write-through porque o ID da
+	 * trasacção, mesmo que especulativo, só é definito na altura do commit.
+	 */
 	@Override
 	public <T> void setBoxValue(VBox<T> vbox, T value) {
 		if (vbox instanceof xtramy.stm.speculation.VBox) {
