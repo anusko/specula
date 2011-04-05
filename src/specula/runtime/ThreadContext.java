@@ -24,6 +24,10 @@ public class ThreadContext {
 		this.startingThread = Thread.currentThread();
 	}
 	
+	public Thread getStartingThread() {
+		return this.startingThread;
+	}
+	
 	public void addTransaction(SpeculaTopLevelTransaction tx) {
 		assert (startingThread == Thread.currentThread());
 		
@@ -61,5 +65,10 @@ public class ThreadContext {
 		this.abortedTx = null;
 		
 		return Continuation.continueWith(c, this);
+	}
+	
+	@Override
+	public String toString() {
+		return this.getClass().getCanonicalName();
 	}
 }

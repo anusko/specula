@@ -3,38 +3,59 @@ package specula.runtime;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 
-import org.apache.commons.javaflow.Continuation;
 import org.apache.commons.javaflow.bytecode.BytecodeClassLoader;
 import org.apache.commons.javaflow.bytecode.transformation.ResourceTransformer;
 import org.apache.commons.javaflow.bytecode.transformation.asm.AsmClassTransformer;
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.commons.EmptyVisitor;
 
+import specula.bytecode.RunnableModifierClassAdapter;
 import util.Log;
 import util.StringList;
+import asmlib.InfoClass;
+import asmlib.InfoClassAdapter;
 import asmlib.InstrumentationException;
 import asmlib.Type;
+import asmlib.Util;
 
 public final class SpeculaClassLoader extends BytecodeClassLoader {
+	
+	private static final String BOOTSTRAP_CLASS_NAME = "specula.bootstrap.BootstrapRunnable";
 
 	private final ResourceTransformer transformer;
-	
-//	// PrintClass: Imprimir classes geradas pelo SpeculationTransformer
-//	public static boolean PRINTCLASS = true;
-//	// WriteClass: Escrever para o disco classes geradas pelo SpeculationTransformer
-//	public static boolean WRITECLASS = false;
-//	// Singleton
-//	private static SpeculaClassLoader CLASSLOADER;
+	private final String bootClass;
 
-	public SpeculaClassLoader(final ResourceTransformer pTransformer) {
+	//	// PrintClass: Imprimir classes geradas pelo SpeculationTransformer
+	//	public static boolean PRINTCLASS = true;
+	//	// WriteClass: Escrever para o disco classes geradas pelo SpeculationTransformer
+	//	public static boolean WRITECLASS = false;
+	//	// Singleton
+	//	private static SpeculaClassLoader instance;
+
+	private SpeculaClassLoader(final ResourceTransformer pTransformer, String bootClass) {
 		this.transformer = pTransformer;
+		this.bootClass = bootClass;
+		
+		jvstm.Transaction.setTransactionFactory(new specula.jvstm.SpeculaTransactionFactory());
 	}
 
 	protected byte[] transform(final byte[] oldClass) throws IOException {
-		final byte[] newClass = transformer.transform(oldClass);
+		byte[] newClass = transformer.transform(oldClass);
+
+		ClassReader cr = new ClassReader(newClass);
+		InfoClass currentClass = new InfoClass(cr.getClassName(), cr.getSuperName());
+		cr.accept(new InfoClassAdapter(new EmptyVisitor(), currentClass), 0);
+
+		cr = new ClassReader(newClass);
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
+		ClassVisitor cv = new RunnableModifierClassAdapter(cw, currentClass);
+		cr.accept(cv, 0);
+
 		// CheckClassAdapter.verify(new ClassReader(newClass), true);
-		return newClass;
+		return cw.toByteArray();
 	}
 
 	@Override
@@ -46,6 +67,7 @@ public final class SpeculaClassLoader extends BytecodeClassLoader {
 			Class<?> c = findLoadedClass(name);
 			if (c != null) return c;
 
+			// TODO implementar um filter em condições
 			if (name.startsWith("org")) {
 				return getParent().loadClass(name);
 			}
@@ -75,135 +97,82 @@ public final class SpeculaClassLoader extends BytecodeClassLoader {
 		try {
 			return defineClass(className, classFile, 0, classFile.length);
 		} catch (SecurityException e) {
-			Log.debug("JVM won't let me load a custom '" + className + "'. Loading non-transactified version.");
+			Log.debug("JVM won't let me load a custom '" + className + "'. Loading the non-modified version.");
 			return getParent().loadClass(className);
 		}
 	}
 
 	protected byte[] getClassBytes(Type className) throws IOException {
-		return transform(new ClassReader(className.commonName()).b);
+		byte[] byteArr = new ClassReader(className.commonName()).b;
+		
+		if (className.commonName().equals(BOOTSTRAP_CLASS_NAME)) {	
+			BootstrapTransformer bt = new BootstrapTransformer(byteArr, Type.fromCommon(this.bootClass));
+			byteArr = bt.transform();
+			
+			Util.printClass(transform(byteArr));
+		}
+		
+		return transform(byteArr);
 	}
 
 	public static void main(String[] argv) throws Throwable {
-		SpeculaClassLoader loader = new SpeculaClassLoader(new AsmClassTransformer());
-
 		StringList args = new StringList(argv);
 		if (args.size() == 0) {
-			System.err.println(loader.getClass().getName() + "\n\tSyntax: Class [<arg0> ... <argn>]");
+			System.err.println(SpeculaClassLoader.class.getName() + "\n\tSyntax: Class [<arg0> ... <argn>]");
 			return;
 		}
+		
+		SpeculaClassLoader loader = new SpeculaClassLoader(new AsmClassTransformer(), args.pollFirst());
 
 		Log.debug(loader.getClass().getName() + " (Args: " + args + ")");
-
-		Method m = loader.loadClass(args.pollFirst(), true).getMethod("main", String[].class);
-		m.setAccessible(true);
-		new BootstrapRunnable(m, new Object[] { args.toArray() }).run();
-	}
-	
-//	public static void main(String[] argArray) throws Throwable {
-//		SpeculaClassLoader loader = new SpeculaClassLoader();
-//		
-//		Options opts = new Options();
-//		OptionGroup group = new OptionGroup();
-//		opts.addOptionGroup(group);
-//		
-//		group.addOption(new Option("p", "print", false, "Print the generated class bytecode (default)."));
-//		group.addOption(new Option("w", "write", false, "Write to disk the generated class."));
-//		
-//		BasicParser parser = new BasicParser();
-//		CommandLine cl = parser.parse(opts, argArray);
-//		
-//		if (cl.hasOption("w")) {
-//			PRINTCLASS = false;
-//			WRITECLASS = true;
-//		}
-//		
-//		StringList args = new StringList(cl.getArgs());
-//		if (args.size() == 0) {
-//			System.err.println(loader.getClass().getName() + "\n\tSyntax: Class [<arg0> ... <argn>]");
-//			for (Object o : opts.getOptions()) {
-//				System.out.println(o);
-//			}
-//			return;
-//		}
-//
-//		Log.debug(loader.getClass().getName() + " (Args: " + args + ")");
-//
-//		Method m = loader.loadClass(args.pollFirst(), true).getMethod("main", String[].class);
-//		m.setAccessible(true);
-//		Log.debug("Trying to invoke main...");
-//		try {
-//			m.invoke(null, new Object[] { args.toArray() });
-//		} catch (InvocationTargetException e) {
-//			throw e.getCause();
-//		}
-//	}
-
-	/**
-	 * Em princípio esta classe é só para fazer bootstrap à main
-	 * pretendida.
-	 * 
-	 */
-	private static class BootstrapRunnable implements Runnable {
-
-		private static boolean used = false;
-
-		private final Method method;
-		private final Object[] args;
-		private boolean inContinuation = false;
-
-
-		public BootstrapRunnable(Method m, Object[] args) {
-			assert Modifier.isStatic(m.getModifiers());
-
-			this.method = m;
-			this.args = args;
+		
+		Method target = loader.loadClass(BOOTSTRAP_CLASS_NAME, true).getMethod("main", String[].class);
+		target.setAccessible(true);
+		Log.debug("Trying to invoke main...");
+		try {
+			target.invoke(null, new Object[] { args.toArray() });
+		} catch (InvocationTargetException e) {
+			throw e.getCause();
 		}
-
-		@Override
-		public synchronized void run() {
-			if (used) {
-				throw new Error(this.getClass().getName() + " can only be used once.");
-			}
-
-			if (! this.inContinuation) {
-				try {
-					this.inContinuation = true;
-					ThreadContext tc = new ThreadContext();
-					Continuation c = Continuation.startWith(this, tc);
-					do {
-						if (! tc.hasTxAborted()) {
-							if (c != null) {
-								c = Continuation.continueWith(c, tc);
-							} else {
-								break;
-							}
-						} else {
-							c = tc.retry();
-						}
-					} while (true);
-				} finally {
-					this.inContinuation = false;
-				}
-			} else {
-				used = true;
-				try {
-					this.method.invoke(null, this.args);
-				} catch (IllegalArgumentException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (IllegalAccessException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (InvocationTargetException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
-
-		}
-
 	}
 
+	//	public static void main(String[] argArray) throws Throwable {
+	//		SpeculaClassLoader loader = new SpeculaClassLoader();
+	//		
+	//		Options opts = new Options();
+	//		OptionGroup group = new OptionGroup();
+	//		opts.addOptionGroup(group);
+	//		
+	//		group.addOption(new Option("p", "print", false, "Print the generated class bytecode (default)."));
+	//		group.addOption(new Option("w", "write", false, "Write to disk the generated class."));
+	//		
+	//		BasicParser parser = new BasicParser();
+	//		CommandLine cl = parser.parse(opts, argArray);
+	//		
+	//		if (cl.hasOption("w")) {
+	//			PRINTCLASS = false;
+	//			WRITECLASS = true;
+	//		}
+	//		
+	//		StringList args = new StringList(cl.getArgs());
+	//		if (args.size() == 0) {
+	//			System.err.println(loader.getClass().getName() + "\n\tSyntax: Class [<arg0> ... <argn>]");
+	//			for (Object o : opts.getOptions()) {
+	//				System.out.println(o);
+	//			}
+	//			return;
+	//		}
+	//
+	//		Log.debug(loader.getClass().getName() + " (Args: " + args + ")");
+	//
+	//		Method m = loader.loadClass(args.pollFirst(), true).getMethod("main", String[].class);
+	//		m.setAccessible(true);
+	//		Log.debug("Trying to invoke main...");
+	//		try {
+	//			m.invoke(null, new Object[] { args.toArray() });
+	//		} catch (InvocationTargetException e) {
+	//			throw e.getCause();
+	//		}
+	//	}
 
 }

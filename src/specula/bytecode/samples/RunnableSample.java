@@ -5,7 +5,7 @@ import org.apache.commons.javaflow.Continuation;
 import specula.runtime.ThreadContext;
 
 public abstract class RunnableSample implements Runnable {
-	
+
 	private static final Object specula$IN_USE = new Object();
 
 	private static final ThreadLocal<Object> specula$inContinuation =
@@ -16,8 +16,18 @@ public abstract class RunnableSample implements Runnable {
 			specula$runInContinuation_id();
 			return;
 		}
-		
-		if (specula$inContinuation.get() == null) {
+
+		Thread lastThread = null;
+		try {
+			ThreadContext tc = (ThreadContext) Continuation.getContext();
+			if (tc != null) {
+				lastThread = tc.getStartingThread();
+			}
+		} catch (NullPointerException e) { }
+
+		if (specula$inContinuation.get() == null
+				&& (lastThread == null || lastThread != Thread.currentThread())) {
+			System.err.println("Starting a new ThreadContext.");
 			try {
 				specula$inContinuation.set(specula$IN_USE);
 				ThreadContext tc = new ThreadContext();
@@ -25,6 +35,7 @@ public abstract class RunnableSample implements Runnable {
 				do {
 					if (! tc.hasTxAborted()) {
 						if (c != null) {
+							tc.setLastContinuation(c);
 							c = Continuation.continueWith(c, tc);
 						} else {
 							break;
@@ -37,6 +48,7 @@ public abstract class RunnableSample implements Runnable {
 				specula$inContinuation.set(null);
 			}
 		} else {
+			System.err.println("Using an old ThreadContext.");
 			specula$runInContinuation_id();
 		}
 	}
