@@ -2,6 +2,7 @@ package specula.runtime;
 
 import java.io.IOException;
 
+import org.apache.commons.javaflow.bytecode.transformation.asm.AsmClassTransformer;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
@@ -14,9 +15,13 @@ import asmlib.Type;
 
 public class ContinuationTransformer {
 	
+	private static final ContinuationFilter filter = new ContinuationFilter();
+	
 	private ClassReader cr;
 	private InfoClass currentClass;
-
+	private final byte[] originalClass;
+	private boolean enabled = true;
+	
 	
 	public ContinuationTransformer(Type type) throws IOException {
 		// Forçar a geração de FRAMES para todas as classes, logo no inicio de toda a cadeia,
@@ -25,12 +30,22 @@ public class ContinuationTransformer {
 		new ClassReader(type.commonName()).accept(cw, ClassReader.EXPAND_FRAMES);
 
 		cr = new ClassReader(cw.toByteArray());
+		this.originalClass = cw.toByteArray();
 		harvestInfoClass();
+		
+		if (filter.filter(currentClass.name())) {
+			this.enabled = false;
+		}
 	}
 	
 	public ContinuationTransformer(byte[] classBytes) {
 		cr = new ClassReader(classBytes);
+		this.originalClass = classBytes;
 		harvestInfoClass();
+		
+		if (filter.filter(currentClass.name())) {
+			this.enabled = false;
+		}
 	}
 	
 	private void harvestInfoClass() {
@@ -41,13 +56,17 @@ public class ContinuationTransformer {
 		cr.accept(cv, 0);
 	}
 	
-	public byte[] transform() {		
-		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+	public byte[] transform() {
+		if (! this.enabled) {
+			return originalClass;
+		}
+		
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
 		ClassVisitor cv = cw;
 		cv = new RunnableModifierClassAdapter(cv, currentClass);
 		cr.accept(cv, 0);
 		
-		final byte[] output = cw.toByteArray();
+		final byte[] output = new AsmClassTransformer().transform(cw.toByteArray());
 		
 //		if (specula.SpeculaClassLoader.PRINTCLASS) asmlib.Util.printClass(output);
 //		
