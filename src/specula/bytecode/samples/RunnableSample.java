@@ -11,6 +11,7 @@ public abstract class RunnableSample implements Runnable {
 	private static final ThreadLocal<Object> specula$inContinuation =
 		new ThreadLocal<Object>();
 
+	
 	public void run() {
 		if (! (this instanceof Runnable)) {
 			specula$runInContinuation_id();
@@ -27,7 +28,7 @@ public abstract class RunnableSample implements Runnable {
 
 		if (specula$inContinuation.get() == null
 				&& (lastThread == null || lastThread != Thread.currentThread())) {
-			System.err.println("Starting a new ThreadContext.");
+			System.err.println("Starting a new ThreadContext @ " + this.getClass().getName());
 			try {
 				specula$inContinuation.set(specula$IN_USE);
 				ThreadContext tc = new ThreadContext();
@@ -48,7 +49,7 @@ public abstract class RunnableSample implements Runnable {
 				specula$inContinuation.set(null);
 			}
 		} else {
-			System.err.println("Using an old ThreadContext.");
+			System.err.println("Using an old ThreadContext @ " + this.getClass().getName());
 			specula$runInContinuation_id();
 		}
 	}

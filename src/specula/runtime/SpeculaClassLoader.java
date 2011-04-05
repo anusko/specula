@@ -5,18 +5,11 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 import org.apache.commons.javaflow.bytecode.BytecodeClassLoader;
-import org.apache.commons.javaflow.bytecode.transformation.ResourceTransformer;
 import org.apache.commons.javaflow.bytecode.transformation.asm.AsmClassTransformer;
 import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.ClassVisitor;
-import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.commons.EmptyVisitor;
 
-import specula.bytecode.RunnableModifierClassAdapter;
 import util.Log;
 import util.StringList;
-import asmlib.InfoClass;
-import asmlib.InfoClassAdapter;
 import asmlib.InstrumentationException;
 import asmlib.Type;
 import asmlib.Util;
@@ -25,7 +18,6 @@ public final class SpeculaClassLoader extends BytecodeClassLoader {
 	
 	private static final String BOOTSTRAP_CLASS_NAME = "specula.bootstrap.BootstrapRunnable";
 
-	private final ResourceTransformer transformer;
 	private final String bootClass;
 
 	//	// PrintClass: Imprimir classes geradas pelo SpeculationTransformer
@@ -35,27 +27,10 @@ public final class SpeculaClassLoader extends BytecodeClassLoader {
 	//	// Singleton
 	//	private static SpeculaClassLoader instance;
 
-	private SpeculaClassLoader(final ResourceTransformer pTransformer, String bootClass) {
-		this.transformer = pTransformer;
+	private SpeculaClassLoader(String bootClass) {
 		this.bootClass = bootClass;
 		
 		jvstm.Transaction.setTransactionFactory(new specula.jvstm.SpeculaTransactionFactory());
-	}
-
-	protected byte[] transform(final byte[] oldClass) throws IOException {
-		byte[] newClass = transformer.transform(oldClass);
-
-		ClassReader cr = new ClassReader(newClass);
-		InfoClass currentClass = new InfoClass(cr.getClassName(), cr.getSuperName());
-		cr.accept(new InfoClassAdapter(new EmptyVisitor(), currentClass), 0);
-
-		cr = new ClassReader(newClass);
-		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
-		ClassVisitor cv = new RunnableModifierClassAdapter(cw, currentClass);
-		cr.accept(cv, 0);
-
-		// CheckClassAdapter.verify(new ClassReader(newClass), true);
-		return cw.toByteArray();
 	}
 
 	@Override
@@ -68,9 +43,9 @@ public final class SpeculaClassLoader extends BytecodeClassLoader {
 			if (c != null) return c;
 
 			// TODO implementar um filter em condições
-			if (name.startsWith("org")) {
-				return getParent().loadClass(name);
-			}
+//			if (name.startsWith("org.") || name.startsWith("java.")) {
+//				return getParent().loadClass(name);
+//			}
 
 			c = findClass(name);
 			if (resolve) resolveClass(c);
@@ -102,17 +77,17 @@ public final class SpeculaClassLoader extends BytecodeClassLoader {
 		}
 	}
 
-	protected byte[] getClassBytes(Type className) throws IOException {
-		byte[] byteArr = new ClassReader(className.commonName()).b;
+	protected byte[] getClassBytes(Type type) throws IOException {
+		byte[] byteArr = new ClassReader(type.commonName()).b;
 		
-		if (className.commonName().equals(BOOTSTRAP_CLASS_NAME)) {	
-			BootstrapTransformer bt = new BootstrapTransformer(byteArr, Type.fromCommon(this.bootClass));
-			byteArr = bt.transform();
-			
-			Util.printClass(transform(byteArr));
+		if (type.commonName().equals(BOOTSTRAP_CLASS_NAME)) {	
+			byteArr = new BootstrapTransformer(byteArr, Type.fromCommon(this.bootClass)).transform();
 		}
+		byteArr = new ContinuationTransformer(byteArr).transform();
 		
-		return transform(byteArr);
+		//if (type.commonName().startsWith("specula.runtime.")) Util.printClass(byteArr);
+		
+		return byteArr;
 	}
 
 	public static void main(String[] argv) throws Throwable {
@@ -122,7 +97,7 @@ public final class SpeculaClassLoader extends BytecodeClassLoader {
 			return;
 		}
 		
-		SpeculaClassLoader loader = new SpeculaClassLoader(new AsmClassTransformer(), args.pollFirst());
+		SpeculaClassLoader loader = new SpeculaClassLoader(args.pollFirst());
 
 		Log.debug(loader.getClass().getName() + " (Args: " + args + ")");
 		

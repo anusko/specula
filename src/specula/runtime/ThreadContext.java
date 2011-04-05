@@ -67,8 +67,4 @@ public class ThreadContext {
 		return Continuation.continueWith(c, this);
 	}
 	
-	@Override
-	public String toString() {
-		return this.getClass().getCanonicalName();
-	}
 }
