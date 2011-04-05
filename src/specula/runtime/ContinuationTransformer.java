@@ -8,7 +8,7 @@ import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.commons.EmptyVisitor;
 
-import specula.bytecode.RunnableModifierClassAdapter;
+import specula.bytecode.InjectCustomRunClassAdapter;
 import asmlib.InfoClass;
 import asmlib.InfoClassAdapter;
 import asmlib.Type;
@@ -63,7 +63,7 @@ public class ContinuationTransformer {
 		
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
 		ClassVisitor cv = cw;
-		cv = new RunnableModifierClassAdapter(cv, currentClass);
+		cv = new InjectCustomRunClassAdapter(cv, currentClass);
 		cr.accept(cv, 0);
 		
 		final byte[] output = new AsmClassTransformer().transform(cw.toByteArray());

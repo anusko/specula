@@ -42,7 +42,7 @@ import asmlib.Util;
  * 1) (Optimização) Evitar injectar o método run() em todas as classes.
  *
  */
-public class RunnableModifierClassAdapter extends ClassAdapter implements Opcodes {
+public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes {
 
 	private static int counter = 0;
 
@@ -55,7 +55,7 @@ public class RunnableModifierClassAdapter extends ClassAdapter implements Opcode
 	private int id;
 
 
-	public RunnableModifierClassAdapter(ClassVisitor cv, InfoClass infoClass) {
+	public InjectCustomRunClassAdapter(ClassVisitor cv, InfoClass infoClass) {
 		super(cv);
 		assert (infoClass != null);
 
