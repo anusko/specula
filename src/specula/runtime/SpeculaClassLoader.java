@@ -5,7 +5,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 import org.apache.commons.javaflow.bytecode.BytecodeClassLoader;
-import org.apache.commons.javaflow.bytecode.transformation.asm.AsmClassTransformer;
 import org.objectweb.asm.ClassReader;
 
 import util.Log;

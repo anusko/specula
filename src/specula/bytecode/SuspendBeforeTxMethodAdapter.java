@@ -1,6 +1,7 @@
 package specula.bytecode;
 
 import org.apache.commons.javaflow.Continuation;
+import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodAdapter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
@@ -11,6 +12,10 @@ public class SuspendBeforeTxMethodAdapter extends MethodAdapter implements Opcod
 
 	public SuspendBeforeTxMethodAdapter(MethodVisitor mv) {
 		super(mv);
+	}
+	
+	public SuspendBeforeTxMethodAdapter(int access, String name, String desc, String signature, String[] exceptions, ClassVisitor cv) {
+		super(cv.visitMethod(access, name, desc, signature, exceptions));
 	}
 
 	@Override
