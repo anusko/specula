@@ -13,6 +13,7 @@ import asmlib.Type;
  * gerar dinamicamente a chamada ao método pretendido.
  * 
  * -----
+ * 
  * NOTA: esta classe não faz verificações à classe de bootstrap. Esta tem que
  * ser publica, concretizar a interface java.lang.Runnable e não ser abstracta.
  *
@@ -37,7 +38,6 @@ public class PrepareBootstrapClassAdaptor extends ClassAdapter implements Opcode
 	@Override
 	public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
 		if (name.equals("run")) {
-			
 			MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
 			mv.visitCode();
 			Label l0 = new Label();

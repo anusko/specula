@@ -16,11 +16,11 @@ import asmlib.Util;
  * Modifica classes que implementem um método "public <final> void run()".
  * 
  * Renomeia o método "public <final> void run()" para
- * "private void specula$runInContinuation_<id>()" e cria o método "public void run()"
+ * "private void specula$run()" e cria o método "public void run()"
  * com código que pode ser visto na classe specula.bytecode.samples.RunnableSample
  * 
  * De notar que a flag "final" cai. É "hackish" mas, IMHO, não tem grande problema
- * pois o código original cumpre a definição.
+ * pois o código original cumpre a especificação.
  * 
  * -----
  * NOTA: é necessário modificar mesmo as classes que não implementam a interface
@@ -36,29 +36,25 @@ import asmlib.Util;
  * A classe C2 é válida.
  * -----
  * 
- * Esta classe NÃO suporta concurrência (simplesmente por causa
- * do acesso ao field counter).
- * 
  * TODO
  * 1) (Optimização) Evitar injectar o método run() em todas as classes.
  *
  */
 public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes {
 
-	private static int counter = 0;
+	private boolean _needsModification = false;
 
-	private boolean needsModification = false;
+	private MethodVisitor _clinitVisitor;
+	private MethodVisitor _runVisitor;
 
-	private MethodVisitor clinitVisitor;
-	private MethodVisitor runVisitor;
-
-	private String name;
-	private int id;
+	private final InfoClass _currentClass;
 
 
 	public InjectCustomRunClassAdapter(ClassVisitor cv, InfoClass infoClass) {
 		super(cv);
 		assert (infoClass != null);
+
+		_currentClass = infoClass;
 
 		InfoMethod im = infoClass.getMethod("run", "()V");
 		if (im != null) {
@@ -69,7 +65,7 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 					im.access(),
 					ACC_STATIC);
 
-			this.needsModification = ! (isAbstract || isStatic);
+			_needsModification = ! (isAbstract || isStatic);
 		}
 	}
 
@@ -77,9 +73,7 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 	public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
 		super.visit(version, access, name, signature, superName, interfaces);
 
-		this.name = name;
-
-		if (this.needsModification) {
+		if (_needsModification) {
 			FieldVisitor fv = super.visitField(ACC_PRIVATE + ACC_FINAL + ACC_STATIC,
 					"specula$IN_USE", "Ljava/lang/Object;", null, null);
 			fv.visitEnd();
@@ -94,37 +88,41 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 	@Override
 	public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
 		// temos que inicializar os fields no clinit
-		if (this.needsModification 	&& Util.checkFlag(access, ACC_STATIC)
+		if (_needsModification 	&& Util.checkFlag(access, ACC_STATIC)
 				&& name.equals("<clinit>") && desc.equals("()V")) {
-			assert (this.clinitVisitor == null);
+			assert (_clinitVisitor == null);
 
-			MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
-			this.clinitVisitor = new MethodAdapter(mv) {
-				
-				private boolean done = false;
-				
-				@Override
-				public void visitCode() {
-					if (! this.done) {
-						clinit(mv, false);
-						this.done = true;
-					}
-					super.visitCode();
-				}
-				
-			};
-			return this.clinitVisitor;
+			_clinitVisitor = super.visitMethod(access, name, desc, signature, exceptions);
+			clinit(_clinitVisitor, false);
+			return _clinitVisitor;
 		}
 
-		if (this.needsModification && name.equals("run") && desc.equals("()V")) {
-			assert (this.runVisitor == null);
+		if (_needsModification && name.equals("run") && desc.equals("()V")) {
+			assert (_runVisitor == null);
 
-			// remover a flag final... na prática é para por logo só public. Hacky!
-			this.runVisitor = super.visitMethod(ACC_PUBLIC, name, desc, signature, exceptions);
+			// remover a flag final... na prática é para por só public. Hacky!
+			_runVisitor = super.visitMethod(ACC_PUBLIC, name, desc, signature, exceptions);
 			// rename the method
-			this.id = counter++;
-			return super.visitMethod(ACC_PRIVATE, "specula$runInContinuation_" + this.id,
-					desc, signature, exceptions);
+			MethodVisitor mv = 
+				super.visitMethod(ACC_PRIVATE, "specula$run", desc, signature, exceptions);
+			return new MethodAdapter(mv) {
+
+				@Override
+				public void visitMethodInsn(int opcode, String owner,
+						String name, String desc) {
+
+					if (opcode == INVOKESPECIAL
+							&& owner.equals(_currentClass.name().asmName())
+							&& name.equals("run") && desc.equals("()V")) {
+
+						super.visitMethodInsn(opcode, owner, "specula$run", desc);
+					} else {
+						super.visitMethodInsn(opcode, owner, name, desc);
+					}
+					
+				}	
+
+			};
 		}
 
 		return super.visitMethod(access, name, desc, signature, exceptions);	
@@ -132,14 +130,14 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 
 	@Override
 	public void visitEnd() {
-		if (this.needsModification) {
-			if (this.clinitVisitor == null) {
-				this.clinitVisitor = super.visitMethod(ACC_STATIC, "<clinit>", "()V", null, null);
-				clinit(this.clinitVisitor, true);
+		if (_needsModification) {
+			if (_clinitVisitor == null) {
+				_clinitVisitor = super.visitMethod(ACC_STATIC, "<clinit>", "()V", null, null);
+				clinit(_clinitVisitor, true);
 			}
 
-			assert (this.runVisitor != null);
-			run(this.runVisitor);
+			assert (_runVisitor != null);
+			run(_runVisitor);
 		}
 
 		super.visitEnd();
@@ -153,7 +151,7 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		mv.visitTypeInsn(NEW, "java/lang/Object");
 		mv.visitInsn(DUP);
 		mv.visitMethodInsn(INVOKESPECIAL, "java/lang/Object", "<init>", "()V");
-		mv.visitFieldInsn(PUTSTATIC, this.name, "specula$IN_USE", "Ljava/lang/Object;");
+		mv.visitFieldInsn(PUTSTATIC, _currentClass.name().asmName(), "specula$IN_USE", "Ljava/lang/Object;");
 		Label l1 = new Label();
 		mv.visitLabel(l1);
 		mv.visitLineNumber(12, l1);
@@ -163,7 +161,7 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		Label l2 = new Label();
 		mv.visitLabel(l2);
 		mv.visitLineNumber(11, l2);
-		mv.visitFieldInsn(PUTSTATIC, this.name, "specula$inContinuation", "Ljava/lang/ThreadLocal;");
+		mv.visitFieldInsn(PUTSTATIC, _currentClass.name().asmName(), "specula$inContinuation", "Ljava/lang/ThreadLocal;");
 		if (newMethod) {
 			Label l3 = new Label();
 			mv.visitLabel(l3);
@@ -194,7 +192,7 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		mv.visitLabel(l7);
 		mv.visitLineNumber(17, l7);
 		mv.visitVarInsn(ALOAD, 0);
-		mv.visitMethodInsn(INVOKESPECIAL, this.name, "specula$runInContinuation_" + this.id, "()V");
+		mv.visitMethodInsn(INVOKESPECIAL, _currentClass.name().asmName(), "specula$run", "()V");
 		Label l8 = new Label();
 		mv.visitLabel(l8);
 		mv.visitLineNumber(18, l8);
@@ -226,12 +224,12 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		mv.visitJumpInsn(GOTO, l10);
 		mv.visitLabel(l2);
 		mv.visitLineNumber(27, l2);
-		mv.visitFrame(Opcodes.F_FULL, 2, new Object[] {this.name, "java/lang/Thread"}, 1, new Object[] {"java/lang/NullPointerException"});
+		mv.visitFrame(Opcodes.F_FULL, 2, new Object[] {_currentClass.name().asmName(), "java/lang/Thread"}, 1, new Object[] {"java/lang/NullPointerException"});
 		mv.visitVarInsn(ASTORE, 2);
 		mv.visitLabel(l10);
 		mv.visitLineNumber(29, l10);
 		mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
-		mv.visitFieldInsn(GETSTATIC, this.name, "specula$inContinuation", "Ljava/lang/ThreadLocal;");
+		mv.visitFieldInsn(GETSTATIC, _currentClass.name().asmName(), "specula$inContinuation", "Ljava/lang/ThreadLocal;");
 		mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/ThreadLocal", "get", "()Ljava/lang/Object;");
 		Label l12 = new Label();
 		mv.visitJumpInsn(IFNONNULL, l12);
@@ -260,8 +258,8 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V");
 		mv.visitLabel(l3);
 		mv.visitLineNumber(33, l3);
-		mv.visitFieldInsn(GETSTATIC, this.name, "specula$inContinuation", "Ljava/lang/ThreadLocal;");
-		mv.visitFieldInsn(GETSTATIC, this.name, "specula$IN_USE", "Ljava/lang/Object;");
+		mv.visitFieldInsn(GETSTATIC, _currentClass.name().asmName(), "specula$inContinuation", "Ljava/lang/ThreadLocal;");
+		mv.visitFieldInsn(GETSTATIC, _currentClass.name().asmName(), "specula$IN_USE", "Ljava/lang/Object;");
 		mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V");
 		Label l15 = new Label();
 		mv.visitLabel(l15);
@@ -321,12 +319,12 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		mv.visitJumpInsn(GOTO, l17);
 		mv.visitLabel(l4);
 		mv.visitLineNumber(48, l4);
-		mv.visitFrame(Opcodes.F_FULL, 2, new Object[] {this.name, "java/lang/Thread"}, 1, new Object[] {"java/lang/Throwable"});
+		mv.visitFrame(Opcodes.F_FULL, 2, new Object[] {_currentClass.name().asmName(), "java/lang/Thread"}, 1, new Object[] {"java/lang/Throwable"});
 		mv.visitVarInsn(ASTORE, 4);
 		Label l25 = new Label();
 		mv.visitLabel(l25);
 		mv.visitLineNumber(49, l25);
-		mv.visitFieldInsn(GETSTATIC, this.name, "specula$inContinuation", "Ljava/lang/ThreadLocal;");
+		mv.visitFieldInsn(GETSTATIC, _currentClass.name().asmName(), "specula$inContinuation", "Ljava/lang/ThreadLocal;");
 		mv.visitInsn(ACONST_NULL);
 		mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V");
 		Label l26 = new Label();
@@ -337,7 +335,7 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		mv.visitLabel(l20);
 		mv.visitLineNumber(49, l20);
 		mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
-		mv.visitFieldInsn(GETSTATIC, this.name, "specula$inContinuation", "Ljava/lang/ThreadLocal;");
+		mv.visitFieldInsn(GETSTATIC, _currentClass.name().asmName(), "specula$inContinuation", "Ljava/lang/ThreadLocal;");
 		mv.visitInsn(ACONST_NULL);
 		mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V");
 		Label l27 = new Label();
@@ -360,14 +358,14 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		mv.visitLabel(l28);
 		mv.visitLineNumber(53, l28);
 		mv.visitVarInsn(ALOAD, 0);
-		mv.visitMethodInsn(INVOKESPECIAL, this.name, "specula$runInContinuation_" + this.id, "()V");
+		mv.visitMethodInsn(INVOKESPECIAL, _currentClass.name().asmName(), "specula$run", "()V");
 		mv.visitLabel(l27);
 		mv.visitLineNumber(55, l27);
 		mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
 		mv.visitInsn(RETURN);
 		Label l29 = new Label();
 		mv.visitLabel(l29);
-		mv.visitLocalVariable("this", "L" + this.name + ";", null, l5, l29, 0);
+		mv.visitLocalVariable("this", "L" + _currentClass.name().asmName() + ";", null, l5, l29, 0);
 		mv.visitLocalVariable("lastThread", "Ljava/lang/Thread;", null, l0, l29, 1);
 		mv.visitLocalVariable("tc", "Lspecula/runtime/ThreadContext;", null, l9, l2, 2);
 		mv.visitLocalVariable("tc", "Lspecula/runtime/ThreadContext;", null, l16, l4, 2);

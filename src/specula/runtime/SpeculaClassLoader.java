@@ -17,7 +17,7 @@ public final class SpeculaClassLoader extends BytecodeClassLoader {
 	
 	private static final String BOOTSTRAP_CLASS_NAME = "specula.bootstrap.BootstrapRunnable";
 
-	private final String bootClass;
+	private final String _bootClassName;
 
 	//	// PrintClass: Imprimir classes geradas pelo SpeculationTransformer
 	//	public static boolean PRINTCLASS = true;
@@ -27,7 +27,7 @@ public final class SpeculaClassLoader extends BytecodeClassLoader {
 	//	private static SpeculaClassLoader instance;
 
 	private SpeculaClassLoader(String bootClass) {
-		this.bootClass = bootClass;
+		_bootClassName = bootClass;
 		
 		jvstm.Transaction.setTransactionFactory(new specula.jvstm.SpeculaTransactionFactory());
 	}
@@ -80,11 +80,11 @@ public final class SpeculaClassLoader extends BytecodeClassLoader {
 		byte[] byteArr = new ClassReader(type.commonName()).b;
 		
 		if (type.commonName().equals(BOOTSTRAP_CLASS_NAME)) {	
-			byteArr = new BootstrapTransformer(byteArr, Type.fromCommon(this.bootClass)).transform();
+			byteArr = new BootstrapTransformer(byteArr, Type.fromCommon(_bootClassName)).transform();
 		}
 		byteArr = new ContinuationTransformer(byteArr).transform();
 		
-		//if (type.commonName().startsWith("specula.runtime.")) Util.printClass(byteArr);
+		//if (type.commonName().startsWith("continuationsTests.")) Util.printClass(byteArr);
 		
 		return byteArr;
 	}
