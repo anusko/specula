@@ -14,9 +14,9 @@ import asmlib.Type;
 
 public class BootstrapTransformer {
 
-	private ClassReader cr;
-	private InfoClass currentClass;
-	private final Type targetClass;
+	private ClassReader _cr;
+	private InfoClass _currentClass;
+	private final Type _targetClass;
 
 	
 	public BootstrapTransformer(Type type, Type targetClass) throws IOException {
@@ -25,32 +25,32 @@ public class BootstrapTransformer {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
 		new ClassReader(type.commonName()).accept(cw, ClassReader.EXPAND_FRAMES);
 
-		cr = new ClassReader(cw.toByteArray());
+		_cr = new ClassReader(cw.toByteArray());
 		harvestInfoClass();
 		
-		this.targetClass = targetClass;
+		_targetClass = targetClass;
 	}
 	
 	public BootstrapTransformer(byte[] classBytes, Type targetClass) {
-		cr = new ClassReader(classBytes);
+		_cr = new ClassReader(classBytes);
 		harvestInfoClass();
 		
-		this.targetClass = targetClass;
+		_targetClass = targetClass;
 	}
 	
 	private void harvestInfoClass() {
 		// Popular informação da classe
-		currentClass = new InfoClass(cr.getClassName(), cr.getSuperName());
+		_currentClass = new InfoClass(_cr.getClassName(), _cr.getSuperName());
 		ClassVisitor cv = new EmptyVisitor();
-		cv = new InfoClassAdapter(cv, currentClass);
-		cr.accept(cv, 0);
+		cv = new InfoClassAdapter(cv, _currentClass);
+		_cr.accept(cv, 0);
 	}
 	
 	public byte[] transform() {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
 		ClassVisitor cv = cw;
-		cv = new PrepareBootstrapClassAdaptor(cv, this.targetClass);
-		cr.accept(cv, 0);
+		cv = new PrepareBootstrapClassAdaptor(cv, _targetClass);
+		_cr.accept(cv, 0);
 		
 		final byte[] output = cw.toByteArray();
 		Utils.checkBytecode(output);

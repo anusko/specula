@@ -15,21 +15,21 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	
 	private static final Set<VBox> EMPTY_SET = Collections.emptySet();
 	
-	private final Continuation resumeAt;
-	private Set<VBox> localBoxesWritten = EMPTY_SET;
+	private final Continuation _resumeAt;
+	private Set<VBox> _localBoxesWritten = EMPTY_SET;
 	
 	
 	public SpeculaTopLevelTransaction(ActiveTransactionsRecord activeRecord) {
 		super(activeRecord);
 		
 		ThreadContext tc = (ThreadContext) Continuation.getContext();
-		this.resumeAt = tc.getLastContinuation();
+		_resumeAt = tc.getLastContinuation();
 		
-		assert (resumeAt != null);
+		assert (_resumeAt != null);
 	}
 
 	public Continuation getResumeAt() {
-		return this.resumeAt;
+		return _resumeAt;
 	}
 	
 	// TODO: verificar se é necessário
@@ -52,11 +52,11 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 			super.setBoxValue(vbox, value);
 		} else {
 			// write-through
-			if (this.localBoxesWritten == EMPTY_SET) {
-				this.localBoxesWritten = new HashSet<VBox>();
+			if (_localBoxesWritten == EMPTY_SET) {
+				_localBoxesWritten = new HashSet<VBox>();
 			}
 			// TODO: meter o valor
-			this.localBoxesWritten.add(vbox);
+			_localBoxesWritten.add(vbox);
 		}
 	}
 	

@@ -11,58 +11,58 @@ import specula.jvstm.SpeculaTopLevelTransaction;
 
 public class ThreadContext {
 	
-	private List<SpeculaTopLevelTransaction> transactions;
-	private Continuation lastContinuation;
-	private SpeculaTopLevelTransaction abortedTx;
+	private List<SpeculaTopLevelTransaction> _transactions;
+	private Continuation _lastContinuation;
+	private SpeculaTopLevelTransaction _abortedTx;
 	
-	private final Thread startingThread;
+	private final Thread _startingThread;
 	
 	
 	public ThreadContext() {
-		this.transactions = new LinkedList<SpeculaTopLevelTransaction>();
+		_transactions = new LinkedList<SpeculaTopLevelTransaction>();
 		
-		this.startingThread = Thread.currentThread();
+		_startingThread = Thread.currentThread();
 	}
 	
 	public Thread getStartingThread() {
-		return this.startingThread;
+		return _startingThread;
 	}
 	
 	public void addTransaction(SpeculaTopLevelTransaction tx) {
-		assert (startingThread == Thread.currentThread());
+		assert (_startingThread == Thread.currentThread());
 		
-		this.transactions.add(tx);
+		_transactions.add(tx);
 	}
 	
 	public Collection<SpeculaTopLevelTransaction> getTransactions() {
-		assert (startingThread == Thread.currentThread());
+		assert (_startingThread == Thread.currentThread());
 		
-		return Collections.unmodifiableCollection(transactions);
+		return Collections.unmodifiableCollection(_transactions);
 	}
 	
 	public Continuation getLastContinuation() {
-		return this.lastContinuation;
+		return _lastContinuation;
 	}
 	
 	public void setLastContinuation(Continuation c) {
-		this.lastContinuation = c;
+		_lastContinuation = c;
 	}
 	
 	public boolean hasTxAborted() {
-		return (abortedTx != null) ? true : false;
+		return (_abortedTx != null) ? true : false;
 	}
 	
 	public void setAbortedTx(jvstm.Transaction tx) {
-		assert (abortedTx == null);
+		assert (_abortedTx == null);
 		
 		((SpeculaTopLevelTransaction) tx).getResumeAt();
 	}
 	
 	public Continuation retry() {
-		assert (abortedTx != null);
+		assert (_abortedTx != null);
 		
-		Continuation c = abortedTx.getResumeAt();
-		this.abortedTx = null;
+		Continuation c = _abortedTx.getResumeAt();
+		_abortedTx = null;
 		
 		return Continuation.continueWith(c, this);
 	}

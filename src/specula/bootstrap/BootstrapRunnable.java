@@ -4,11 +4,11 @@ package specula.bootstrap;
 public final class BootstrapRunnable implements Runnable {
 
 	@SuppressWarnings("unused")
-	private final String[] args;
+	private final String[] _args;
 	
 	
 	public BootstrapRunnable(String[] args) {
-		this.args = args;
+		_args = args;
 	}
 
 	@Override

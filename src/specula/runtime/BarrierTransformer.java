@@ -13,17 +13,15 @@ import asmlib.InfoClass;
 import asmlib.InfoClassAdapter;
 import asmlib.Type;
 
-public class ContinuationTransformer {
-	
-	private static final ContinuationFilter filter = new ContinuationFilter();
-	
+public class BarrierTransformer {
+
 	private ClassReader _cr;
 	private InfoClass _currentClass;
 	private final byte[] _originalClass;
 	private boolean _active = true;
 	
 	
-	public ContinuationTransformer(Type type) throws IOException {
+	public BarrierTransformer(Type type) throws IOException {
 		// Forçar a geração de FRAMES para todas as classes, logo no inicio de toda a cadeia,
 		// para evitar possíveis problemas em tudo o que se segue e que vai processar esta classe
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
@@ -32,20 +30,12 @@ public class ContinuationTransformer {
 		_cr = new ClassReader(cw.toByteArray());
 		_originalClass = cw.toByteArray();
 		harvestInfoClass();
-		
-		if (filter.filter(_currentClass.name())) {
-			_active = false;
-		}
 	}
 	
-	public ContinuationTransformer(byte[] classBytes) {
+	public BarrierTransformer(byte[] classBytes) {
 		_cr = new ClassReader(classBytes);
 		_originalClass = classBytes;
 		harvestInfoClass();
-		
-		if (filter.filter(_currentClass.name())) {
-			_active = false;
-		}
 	}
 	
 	private void harvestInfoClass() {
@@ -63,7 +53,6 @@ public class ContinuationTransformer {
 		
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
 		ClassVisitor cv = cw;
-		cv = new InjectCustomRunClassAdapter(cv, _currentClass);
 		_cr.accept(cv, 0);
 		
 		final byte[] output = new AsmClassTransformer().transform(cw.toByteArray());

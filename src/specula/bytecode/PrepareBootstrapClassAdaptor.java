@@ -20,19 +20,19 @@ import asmlib.Type;
  */
 public class PrepareBootstrapClassAdaptor extends ClassAdapter implements Opcodes {
 
-	private final String targetClassName;
-	private String bootstrapRunnableClassName;
+	private final Type _targetClass;
+	private String _bootstrapRunnableClassName;
 
 
 	public PrepareBootstrapClassAdaptor(ClassVisitor cv, Type targetClass) {
 		super(cv);
-		this.targetClassName = targetClass.asmName();
+		_targetClass = targetClass;
 	}
 	
 	@Override
 	public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
 		super.visit(version, access, name, signature, superName, interfaces);
-		this.bootstrapRunnableClassName = name;
+		_bootstrapRunnableClassName = name;
 	}
 
 	@Override
@@ -44,15 +44,15 @@ public class PrepareBootstrapClassAdaptor extends ClassAdapter implements Opcode
 			mv.visitLabel(l0);
 			mv.visitLineNumber(18, l0);
 			mv.visitVarInsn(ALOAD, 0);
-			mv.visitFieldInsn(GETFIELD, this.bootstrapRunnableClassName, "args", "[Ljava/lang/String;");
-			mv.visitMethodInsn(INVOKESTATIC, this.targetClassName, "main", "([Ljava/lang/String;)V");
+			mv.visitFieldInsn(GETFIELD, _bootstrapRunnableClassName, "_args", "[Ljava/lang/String;");
+			mv.visitMethodInsn(INVOKESTATIC, _targetClass.asmName(), "main", "([Ljava/lang/String;)V");
 			Label l1 = new Label();
 			mv.visitLabel(l1);
 			mv.visitLineNumber(19, l1);
 			mv.visitInsn(RETURN);
 			Label l2 = new Label();
 			mv.visitLabel(l2);
-			mv.visitLocalVariable("this", "L" + this.bootstrapRunnableClassName + ";", null, l0, l2, 0);
+			mv.visitLocalVariable("this", "L" + _bootstrapRunnableClassName + ";", null, l0, l2, 0);
 			mv.visitMaxs(1, 1);
 			mv.visitEnd();
 			
