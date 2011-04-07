@@ -4,6 +4,7 @@ import org.objectweb.asm.ClassAdapter;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.Label;
+import org.objectweb.asm.MethodAdapter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
@@ -97,18 +98,33 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 				&& name.equals("<clinit>") && desc.equals("()V")) {
 			assert (this.clinitVisitor == null);
 
-			this.clinitVisitor = super.visitMethod(access, name, desc, signature, exceptions);
+			MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
+			this.clinitVisitor = new MethodAdapter(mv) {
+				
+				private boolean done = false;
+				
+				@Override
+				public void visitCode() {
+					if (! this.done) {
+						clinit(mv, false);
+						this.done = true;
+					}
+					super.visitCode();
+				}
+				
+			};
+			return this.clinitVisitor;
 		}
 
 		if (this.needsModification && name.equals("run") && desc.equals("()V")) {
 			assert (this.runVisitor == null);
 
-			// remover a flag final... hacky!
+			// remover a flag final... na prática é para por logo só public. Hacky!
 			this.runVisitor = super.visitMethod(ACC_PUBLIC, name, desc, signature, exceptions);
 			// rename the method
-			access = ACC_PRIVATE;
 			this.id = counter++;
-			name = "specula$runInContinuation_" + id;	
+			return super.visitMethod(ACC_PRIVATE, "specula$runInContinuation_" + this.id,
+					desc, signature, exceptions);
 		}
 
 		return super.visitMethod(access, name, desc, signature, exceptions);	
@@ -119,8 +135,8 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		if (this.needsModification) {
 			if (this.clinitVisitor == null) {
 				this.clinitVisitor = super.visitMethod(ACC_STATIC, "<clinit>", "()V", null, null);
+				clinit(this.clinitVisitor, true);
 			}
-			clinit(this.clinitVisitor);
 
 			assert (this.runVisitor != null);
 			run(this.runVisitor);
@@ -129,7 +145,7 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		super.visitEnd();
 	}
 
-	private void clinit(MethodVisitor mv) {
+	private void clinit(MethodVisitor mv, boolean newMethod) {
 		mv.visitCode();
 		Label l0 = new Label();
 		mv.visitLabel(l0);
@@ -148,10 +164,12 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		mv.visitLabel(l2);
 		mv.visitLineNumber(11, l2);
 		mv.visitFieldInsn(PUTSTATIC, this.name, "specula$inContinuation", "Ljava/lang/ThreadLocal;");
-		Label l3 = new Label();
-		mv.visitLabel(l3);
-		mv.visitLineNumber(7, l3);
-		mv.visitInsn(RETURN);
+		if (newMethod) {
+			Label l3 = new Label();
+			mv.visitLabel(l3);
+			mv.visitLineNumber(7, l3);
+			mv.visitInsn(RETURN);
+		}
 		mv.visitMaxs(2, 0);
 		mv.visitEnd();
 	}
