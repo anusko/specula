@@ -2,7 +2,7 @@ package specula.bytecode.samples;
 
 import org.apache.commons.javaflow.Continuation;
 
-import specula.runtime.ThreadContext;
+import specula.jvstm.ThreadContext;
 
 public abstract class RunnableSample implements Runnable {
 
@@ -11,10 +11,10 @@ public abstract class RunnableSample implements Runnable {
 	private static final ThreadLocal<Object> specula$inContinuation =
 		new ThreadLocal<Object>();
 
-	
+
 	public void run() {
 		if (! (this instanceof Runnable)) {
-			specula$runInContinuation_id();
+			specula$run();
 			return;
 		}
 
@@ -42,7 +42,12 @@ public abstract class RunnableSample implements Runnable {
 							break;
 						}
 					} else {
-						c = tc.retry();
+						c = tc.getResumePoint();
+						if (c != null){
+							c = Continuation.continueWith(c, tc);
+						} else {
+							c = Continuation.startWith(this, tc);
+						}
 					}
 				} while (true);
 			} finally {
@@ -50,11 +55,11 @@ public abstract class RunnableSample implements Runnable {
 			}
 		} else {
 			System.err.println("Using an old ThreadContext @ " + this.getClass().getName());
-			specula$runInContinuation_id();
+			specula$run();
 		}
 	}
 
-	private void specula$runInContinuation_id() {
+	private void specula$run() {
 		// the original run() method
 	}
 

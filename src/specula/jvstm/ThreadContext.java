@@ -1,25 +1,25 @@
-package specula.runtime;
+package specula.jvstm;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.commons.javaflow.Continuation;
 
-import specula.jvstm.SpeculaTopLevelTransaction;
 
 public class ThreadContext {
 	
-	private List<SpeculaTopLevelTransaction> _transactions;
+	private final List<SpeculaTopLevelTransaction> _transactions;
 	private Continuation _lastContinuation;
-	private SpeculaTopLevelTransaction _abortedTx;
+	private final AtomicReference< SpeculaTopLevelTransaction> _abortedTx;
 	
 	private final Thread _startingThread;
 	
 	
 	public ThreadContext() {
 		_transactions = new LinkedList<SpeculaTopLevelTransaction>();
+		_abortedTx = new AtomicReference<SpeculaTopLevelTransaction>(null);
 		
 		_startingThread = Thread.currentThread();
 	}
@@ -37,7 +37,7 @@ public class ThreadContext {
 	public Collection<SpeculaTopLevelTransaction> getTransactions() {
 		assert (_startingThread == Thread.currentThread());
 		
-		return Collections.unmodifiableCollection(_transactions);
+		return _transactions;
 	}
 	
 	public Continuation getLastContinuation() {
@@ -49,22 +49,21 @@ public class ThreadContext {
 	}
 	
 	public boolean hasTxAborted() {
-		return (_abortedTx != null) ? true : false;
+		return ! (_abortedTx.compareAndSet(null, null));
 	}
 	
-	public void setAbortedTx(jvstm.Transaction tx) {
-		assert (_abortedTx == null);
-		
-		((SpeculaTopLevelTransaction) tx).getResumeAt();
+	public void setAbortedTx(SpeculaTopLevelTransaction tx) {
+		if (_abortedTx.compareAndSet(null, tx)) {
+			tx.markForAbortion();
+		}
 	}
 	
-	public Continuation retry() {
-		assert (_abortedTx != null);
+	public Continuation getResumePoint() {
+		assert (hasTxAborted());
 		
-		Continuation c = _abortedTx.getResumeAt();
-		_abortedTx = null;
-		
-		return Continuation.continueWith(c, this);
+		Continuation c = _abortedTx.get()._resumeAt;
+		_abortedTx.set(null);
+		return c;
 	}
 	
 }

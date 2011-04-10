@@ -37,8 +37,8 @@ public class PrepareBootstrapClassAdaptor extends ClassAdapter implements Opcode
 
 	@Override
 	public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
+		MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
 		if (name.equals("run")) {
-			MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
 			mv.visitCode();
 			Label l0 = new Label();
 			mv.visitLabel(l0);
@@ -55,11 +55,9 @@ public class PrepareBootstrapClassAdaptor extends ClassAdapter implements Opcode
 			mv.visitLocalVariable("this", "L" + _bootstrapRunnableClassName + ";", null, l0, l2, 0);
 			mv.visitMaxs(1, 1);
 			mv.visitEnd();
-			
-			return mv;
-		} else {
-			return super.visitMethod(access, name, desc, signature, exceptions);
 		}
+		
+		return mv;
 	}
 
 }

@@ -5,7 +5,7 @@ import asmlib.Type;
 public class ContinuationFilter {
 
 	private final String[] prefixes = { "java.", "sun.", "jvstm.", "transactifier.", "specula.runtime.",
-			"org.eclipse.tptp.", "com.yourkit.runtime.", "org.apache.commons.", "xtramy.", };
+			"org.eclipse.tptp.", "com.yourkit.runtime.", "org.apache.commons.", "xtramy.", "specula.jvstm." };
 
 		protected String[] prefixes() {
 			return prefixes;
