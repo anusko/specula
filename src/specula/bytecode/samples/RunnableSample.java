@@ -2,6 +2,7 @@ package specula.bytecode.samples;
 
 import org.apache.commons.javaflow.Continuation;
 
+import specula.jvstm.SpeculaTopLevelTransaction;
 import specula.jvstm.ThreadContext;
 
 public abstract class RunnableSample implements Runnable {
@@ -42,11 +43,12 @@ public abstract class RunnableSample implements Runnable {
 							break;
 						}
 					} else {
+						tc.reset();
 						c = tc.getResumePoint();
 						if (c != null){
 							c = Continuation.continueWith(c, tc);
 						} else {
-							c = Continuation.startWith(this, tc);
+							throw new Error("Dead code... ups!");
 						}
 					}
 				} while (true);

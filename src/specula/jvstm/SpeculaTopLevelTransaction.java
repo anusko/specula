@@ -14,8 +14,8 @@ import org.apache.commons.javaflow.Continuation;
 
 enum TxStatus {
 
-	EXECUTING, COMPLETE, ABORTED, TO_ABORT, COMMITTED;
-	
+	EXECUTING, COMPLETE, TO_ABORT, ABORTED, CAN_COMMIT, COMMITTED;
+
 }
 
 public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
@@ -23,7 +23,7 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	private static final ReentrantLock COMMIT_LOCK = new ReentrantLock(true);
 
 	static volatile Cons<VBoxBody> _bodiesToGC = Cons.empty();
-	static final ValidatingThread _validatingThread = new ValidatingThread(10);
+	static final ValidatingThread _validatingThread = new ValidatingThread(50);
 
 	volatile TxStatus _status;
 	Cons<Pair<VBox, VBoxBody>> _rs;
@@ -55,41 +55,42 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 
 	@Override
 	protected void tryCommit() {
+		if (_tc.hasTxAborted()) {
+			abortTx();
+			Continuation.cancel();
+			// execução vai ficar por aqui
+		}
+
 		_rs = this.bodiesRead;
 		// meter no contexto
 		_tc.addTransaction(this);
 
-		if (_tc.hasTxAborted()) {
-			sync();
-			// execução vai ficar por aqui
+		//if (isWriteTransaction()) {
+		COMMIT_LOCK.lock();
+		try {
+			_bodiesCommitted = performValidCommit();
+			// the commit is already done, so create a new ActiveTransactionsRecord
+			ActiveTransactionsRecord newRecord = new ActiveTransactionsRecord(getNumber(), _bodiesToGC);
+			setMostRecentActiveRecord(newRecord);
+			_bodiesToGC = Cons.empty();
+
+			// as this transaction changed number, we must
+			// update the activeRecords accordingly
+
+			// the correct order is to increment first the
+			// new, and only then decrement the old
+			newRecord.incrementRunning();
+			this.activeTxRecord.decrementRunning();
+			this.activeTxRecord = newRecord;
+
+			_status = TxStatus.COMPLETE;
+
+			// meter na queue para validar
+			_validatingThread.enqueue(this);
+		} finally {
+			COMMIT_LOCK.unlock();
 		}
-
-		if (isWriteTransaction()) {
-			COMMIT_LOCK.lock();
-			try {
-				_bodiesCommitted = performValidCommit();
-				// the commit is already done, so create a new ActiveTransactionsRecord
-				ActiveTransactionsRecord newRecord = new ActiveTransactionsRecord(getNumber(), _bodiesToGC);
-				setMostRecentActiveRecord(newRecord);
-				_bodiesToGC = Cons.empty();
-
-				// as this transaction changed number, we must
-				// update the activeRecords accordingly
-
-				// the correct order is to increment first the
-				// new, and only then decrement the old
-				newRecord.incrementRunning();
-				this.activeTxRecord.decrementRunning();
-				this.activeTxRecord = newRecord;
-
-				_status = TxStatus.COMPLETE;
-
-				// meter na queue para validar
-				_validatingThread.enqueue(this);
-			} finally {
-				COMMIT_LOCK.unlock();
-			}
-		}
+		//}
 	}
 
 	@Override
@@ -135,32 +136,30 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 
 	@Override
 	protected void abortTx() {
-		synchronized (this) {
-			switch (_status) {
-			case EXECUTING:
-				_status = TxStatus.ABORTED;
-				super.abortTx();
-				break;
-			case COMPLETE:
-			case TO_ABORT:
-				try {
-					COMMIT_LOCK.lock();
-					for (Pair<VBox, VBoxBody> pair : _ws) {
-						pair.first.body = pair.second.next;
-					}
-				} finally {
-					COMMIT_LOCK.unlock();
+		switch (_status) {
+		case EXECUTING:
+			_status = TxStatus.ABORTED;
+			super.abortTx();
+			break;
+		case COMPLETE:
+		case TO_ABORT:
+		case CAN_COMMIT:
+			try {
+				COMMIT_LOCK.lock();
+				for (Pair<VBox, VBoxBody> pair : _ws) {
+					pair.first.body = pair.second.next;
 				}
-				_status = TxStatus.ABORTED;
-				//notifyAll();
-				super.abortTx();	
-				break;
-			case COMMITTED:
-				throw new Error("Trying to abort a committed transaction.");
-//			case ABORTED:
-//				throw new Error("Trying to abort an already aborted transaction.");
-			}	
-		}
+			} finally {
+				COMMIT_LOCK.unlock();
+			}
+			_status = TxStatus.ABORTED;
+			super.abortTx();	
+			break;
+		case COMMITTED:
+			throw new Error("Trying to abort a committed transaction.");
+		case ABORTED:
+			throw new Error("Trying to abort an already aborted transaction.");
+		}	
 	}
 
 	protected void markForAbortion() {
@@ -172,53 +171,52 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 		}
 	}
 
+	protected void markForCommit() {
+		// tem de ser sincronizado por cima
+		if (_status == TxStatus.COMPLETE) {
+			_status = TxStatus.CAN_COMMIT;
+			notifyAll();
+		}
+	}
+
 	protected void definitiveCommit() {
 		_status = TxStatus.COMMITTED;
-		//		synchronized (this) {
-		notifyAll();	
-		//		}
 
-//		Cons cons = _bodiesCommitted;
-//		while (cons.rest() != null) cons = cons.rest();
-//		if (cons != Cons.empty()) {
-//			try {
-//				SpeculaTopLevelTransaction.COMMIT_LOCK.lock();
-//				Cons.class.getField("rest").set(cons, SpeculaTopLevelTransaction._bodiesToGC);
-//				SpeculaTopLevelTransaction._bodiesToGC = _bodiesCommitted;
-//			} catch (Exception e) {
-//				e.printStackTrace();
-//			} finally {
-//				SpeculaTopLevelTransaction.COMMIT_LOCK.unlock();
-//			}
-//		}
+		//		Cons cons = _bodiesCommitted;
+		//		while (cons.rest() != null) cons = cons.rest();
+		//		if (cons != Cons.empty()) {
+		//			try {
+		//				SpeculaTopLevelTransaction.COMMIT_LOCK.lock();
+		//				Cons.class.getField("rest").set(cons, SpeculaTopLevelTransaction._bodiesToGC);
+		//				SpeculaTopLevelTransaction._bodiesToGC = _bodiesCommitted;
+		//			} catch (Exception e) {
+		//				e.printStackTrace();
+		//			} finally {
+		//				SpeculaTopLevelTransaction.COMMIT_LOCK.unlock();
+		//			}
+		//		}
 	}
 
 	public static void sync() {
 		ThreadContext tc = (ThreadContext) Continuation.getContext();
 		Iterator<SpeculaTopLevelTransaction> it = tc.getTransactions().iterator();
 		while (it.hasNext()) {
-			SpeculaTopLevelTransaction stx = it.next();
-			while (stx._status == TxStatus.COMPLETE) {
-				synchronized (stx) {
+			SpeculaTopLevelTransaction tx = it.next();
+			synchronized (tx) {
+				while (tx._status == TxStatus.COMPLETE) {
 					try {
-						stx.wait();
+						tx.wait();
 					} catch (InterruptedException e) {
 						e.printStackTrace();
-					}	
-				}
-			}
-
-			synchronized (stx) {
-				if (stx._status == TxStatus.TO_ABORT || stx._status == TxStatus.ABORTED) {
-					System.err.println("Aborting a tx!");
-					stx.abortTx();
-					it.remove();
-					while (it.hasNext()) {
-						it.next().abortTx();
-						it.remove();
 					}
+				}
+
+				if (tx._status == TxStatus.TO_ABORT) {
+					System.err.println("Aborting a tx!");
+					tc.reset();
 					Continuation.cancel();
-				} else if (stx._status == TxStatus.COMMITTED) {
+				} else if (tx._status == TxStatus.CAN_COMMIT) {
+					tx.definitiveCommit();
 					it.remove();
 				}	
 			}

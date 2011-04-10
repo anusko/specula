@@ -1,14 +1,18 @@
 package specula.jvstm;
 
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.commons.javaflow.Continuation;
 
 
 public class ThreadContext {
+	
+	//final ReentrantLock lock = new ReentrantLock(true);
 	
 	private final List<SpeculaTopLevelTransaction> _transactions;
 	private Continuation _lastContinuation;
@@ -54,16 +58,41 @@ public class ThreadContext {
 	
 	public void setAbortedTx(SpeculaTopLevelTransaction tx) {
 		if (_abortedTx.compareAndSet(null, tx)) {
-			tx.markForAbortion();
+			//tx.markForAbortion();
 		}
 	}
 	
 	public Continuation getResumePoint() {
 		assert (hasTxAborted());
 		
-		Continuation c = _abortedTx.get()._resumeAt;
-		_abortedTx.set(null);
+		SpeculaTopLevelTransaction tx = _abortedTx.get();
+		Continuation c = tx._resumeAt;
+		if (! _abortedTx.compareAndSet(tx, null)) {
+			throw new Error("getResumePoint failed - concurrency detected");
+		}
 		return c;
+	}
+	
+	public void reset() {
+		Iterator<SpeculaTopLevelTransaction> it = getTransactions().iterator();
+		while (it.hasNext()) {
+			SpeculaTopLevelTransaction tx = it.next();
+			synchronized (tx) {
+				if (tx._status != TxStatus.COMMITTED) {
+					tx.abortTx();
+					it.remove();
+					while (it.hasNext()) {
+						SpeculaTopLevelTransaction temp = it.next();
+						synchronized (temp) {
+							temp.abortTx();
+						}
+						it.remove();
+					}
+					return;
+				}
+			}
+			it.remove();
+		}
 	}
 	
 }
