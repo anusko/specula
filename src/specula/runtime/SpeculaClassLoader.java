@@ -84,7 +84,7 @@ public final class SpeculaClassLoader extends BytecodeClassLoader {
 		}
 		byteArr = new ContinuationTransformer(byteArr).transform();
 		
-		//if (type.commonName().startsWith("continuationsTests.")) Util.printClass(byteArr);
+		if (type.commonName().startsWith("test.")) Util.printClass(byteArr);
 		
 		return byteArr;
 	}
