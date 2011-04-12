@@ -5,8 +5,6 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 import jvstm.ActiveTransactionsRecord;
-import jvstm.VBox;
-import jvstm.VBoxBody;
 import jvstm.util.Cons;
 import jvstm.util.Pair;
 
@@ -20,15 +18,15 @@ enum TxStatus {
 
 public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 
-	private static final ReentrantLock COMMIT_LOCK = new ReentrantLock(true);
+	public static final ReentrantLock COMMIT_LOCK = new ReentrantLock(true);
 
-	static volatile Cons<VBoxBody> _bodiesToGC = Cons.empty();
-	static final ValidatingThread _validatingThread = new ValidatingThread(50);
+	static volatile Cons<jvstm.VBoxBody> _bodiesToGC = Cons.empty();
+	static final ValidatingThread _validatingThread = new ValidatingThread(5);
 
 	volatile TxStatus _status;
-	Cons<Pair<VBox, VBoxBody>> _rs;
+	Cons<Pair<jvstm.VBox, jvstm.VBoxBody>> _rs;
 	Cons<Pair<VBox, VBoxBody>> _ws;
-	Cons<VBoxBody> _bodiesCommitted;
+	Cons<jvstm.VBoxBody> _bodiesCommitted;
 	final Continuation _resumeAt;
 	final ThreadContext _tc;
 
@@ -57,7 +55,7 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	protected void tryCommit() {
 		if (_tc.hasTxAborted()) {
 			abortTx();
-			Continuation.cancel();
+			sync();
 			// execução vai ficar por aqui
 		}
 
@@ -94,18 +92,18 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	}
 
 	@Override
-	protected Cons<VBoxBody> doCommit(int newTxNumber) {
-		Cons<VBoxBody> newBodies = Cons.empty();
+	protected Cons<jvstm.VBoxBody> doCommit(int newTxNumber) {
+		Cons<jvstm.VBoxBody> newBodies = Cons.empty();
 		_ws = Cons.empty();
 
-		for (Map.Entry<VBox,Object> entry : boxesWritten.entrySet()) {
-			VBox vbox = entry.getKey();
+		for (Map.Entry<jvstm.VBox, Object> entry : boxesWritten.entrySet()) {
+			VBox vbox = (VBox) entry.getKey();
 			Object newValue = entry.getValue();
 
-			VBoxBody<?> newBody = vbox.commit((newValue == NULL_VALUE) ? null : newValue, newTxNumber);
+			jvstm.VBoxBody<?> newBody = vbox.commit((newValue == NULL_VALUE) ? null : newValue, newTxNumber);
 			newBodies = newBodies.cons(newBody);
 
-			_ws = _ws.cons(new Pair<VBox, VBoxBody>(vbox, newBody));
+			_ws = _ws.cons(new Pair<VBox, VBoxBody>(vbox, (VBoxBody) newBody));
 		}
 
 		return newBodies;
@@ -114,22 +112,24 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	@Override
 	protected boolean validateCommit() {
 		// tem de ser sincronizado por cima
-		if (_tc.hasTxAborted() || _status != TxStatus.COMPLETE) return false;	
+		if (_tc.hasTxAborted() || _status == TxStatus.ABORTED) return false;	
 
 		int transactionNumber = this.number;
+		if (transactionNumber % 5 == 0) return false;
 
-		for (Pair<VBox, VBoxBody> entry : _rs) {
-			VBoxBody boxBody = entry.first.body;
-			do {
-				if (boxBody.version < transactionNumber) {
-					break;
-				}
-				boxBody = boxBody.next;
-			} while (boxBody != null);
+		for (Pair<jvstm.VBox, jvstm.VBoxBody> entry : _rs) {
+			VBox box = (VBox) entry.first;
+			VBoxBody boxBody = (VBoxBody) entry.second;
 
-			if (boxBody != entry.second) {
-				return false;
+			synchronized (boxBody) {
+				while (boxBody.status == BodyStatus.COMPLETE) {
+					try {
+						boxBody.wait();
+					} catch (InterruptedException e) {	}
+				}	
 			}
+
+			if (box.non_speculative_body != boxBody || boxBody.status == BodyStatus.ABORTED) return false;
 		}
 		return true;
 	}
@@ -144,13 +144,8 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 		case COMPLETE:
 		case TO_ABORT:
 		case CAN_COMMIT:
-			try {
-				COMMIT_LOCK.lock();
-				for (Pair<VBox, VBoxBody> pair : _ws) {
-					pair.first.body = pair.second.next;
-				}
-			} finally {
-				COMMIT_LOCK.unlock();
+			for (Pair<VBox, VBoxBody> pair : _ws) {
+				pair.second.abort();
 			}
 			_status = TxStatus.ABORTED;
 			super.abortTx();	
@@ -167,7 +162,9 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 		if (_status == TxStatus.COMPLETE) {
 			_status = TxStatus.TO_ABORT;
 			_tc.setAbortedTx(this);
-			notifyAll();
+			synchronized (this) {
+				notifyAll();
+			}
 		}
 	}
 
@@ -175,12 +172,19 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 		// tem de ser sincronizado por cima
 		if (_status == TxStatus.COMPLETE) {
 			_status = TxStatus.CAN_COMMIT;
-			notifyAll();
+			synchronized (this) {
+				notifyAll();	
+			}
 		}
 	}
 
 	protected void definitiveCommit() {
+		assert (_status == TxStatus.CAN_COMMIT);
+
 		_status = TxStatus.COMMITTED;
+		for (Pair<VBox, VBoxBody> pair : _ws) {
+			pair.first.commit(pair.second);
+		}
 
 		//		Cons cons = _bodiesCommitted;
 		//		while (cons.rest() != null) cons = cons.rest();
@@ -200,6 +204,7 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	public static void sync() {
 		ThreadContext tc = (ThreadContext) Continuation.getContext();
 		Iterator<SpeculaTopLevelTransaction> it = tc.getTransactions().iterator();
+
 		while (it.hasNext()) {
 			SpeculaTopLevelTransaction tx = it.next();
 			synchronized (tx) {
@@ -210,15 +215,20 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 						e.printStackTrace();
 					}
 				}
+			}
 
-				if (tx._status == TxStatus.TO_ABORT) {
-					System.err.println("Aborting a tx!");
+			if (tx._status == TxStatus.TO_ABORT) {
+				tc.lock.lock();
+				try {
 					tc.reset();
-					Continuation.cancel();
-				} else if (tx._status == TxStatus.CAN_COMMIT) {
-					tx.definitiveCommit();
-					it.remove();
-				}	
+				} finally {
+					tc.lock.unlock();
+				}
+				assert (tx._tc.hasTxAborted());
+				Continuation.cancel();
+			} else if (tx._status == TxStatus.CAN_COMMIT) {
+				tx.definitiveCommit();
+				it.remove();
 			}
 		}
 	}

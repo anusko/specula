@@ -14,7 +14,7 @@ final class ValidatingThread extends Thread {
 
 		_queue = new LinkedList<SpeculaTopLevelTransaction>();
 		_delay = delay;
-		
+
 		this.setDaemon(true);
 	}
 
@@ -30,14 +30,17 @@ final class ValidatingThread extends Thread {
 			}
 
 			SpeculaTopLevelTransaction tx = _queue.poll();
-			synchronized (tx) {
+			tx._tc.lock.lock();
+			try {
 				if (tx.validateCommit()) {
 					tx.markForCommit();
 				} else {
 					tx.markForAbortion();
-				}	
+				}
+			} finally {
+				tx._tc.lock.unlock();
 			}
-			
+
 			try {
 				Thread.sleep(_delay);
 			} catch (InterruptedException e) {
