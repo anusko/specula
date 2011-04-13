@@ -48,7 +48,7 @@ public abstract class RunnableSample implements Runnable {
 						if (c != null){
 							c = Continuation.continueWith(c, tc);
 						} else {
-							throw new Error("Dead code... ups!");
+							c = Continuation.startWith(this, tc);
 						}
 					}
 				} while (true);

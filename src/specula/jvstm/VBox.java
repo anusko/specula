@@ -6,42 +6,51 @@ public class VBox<E> extends jvstm.VBox<E> {
 
 	public VBoxBody<E> non_speculative_body;
 
-	
-    public VBox() {
-        this((E)null);
-    }
-    
-    public VBox(E initial) {
-    	super(initial);
-    	//commit((VBoxBody<E>) this.body);
-    }
-	
+
+	public VBox() {
+		this((E)null);
+	}
+
+	public VBox(E initial) {
+		super(initial);
+		//commit((VBoxBody<E>) this.body);
+	}
+
 	// used for persistence support
 	protected VBox(VBoxBody<E> body) {
 		this.body = body;
 	}
 
 	@Override
+	public E get() {
+		Transaction tx = Transaction.current();
+		if (tx == null) {
+			throw new Error();
+		} else {
+			return tx.getBoxValue(this);	
+		}
+	}
+
+	@Override
 	public void put(E newE) {
 		Transaction tx = Transaction.current();
 		if (tx == null) {
-//			Transaction.begin();
-//			super.put(newE);
-//			Transaction.commit();
 			throw new Error();
 		} else {
-			super.put(newE);
+			tx.setBoxValue(this, newE);
 		}
 	}
 
 	public void abort(VBoxBody<E> body) {
 		this.body = non_speculative_body;
-		body.abort();
+		body.abort();	
 	}
 
 	public void commit(VBoxBody<E> body) {
+		assert (body.next == non_speculative_body);
+
 		non_speculative_body = body;
-		body.commit();
+		body.commit();	
 	}
 
 	@Override

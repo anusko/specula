@@ -119,7 +119,7 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 					} else {
 						super.visitMethodInsn(opcode, owner, name, desc);
 					}
-					
+
 				}	
 
 			};
@@ -334,24 +334,28 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		mv.visitLabel(l26);
 		mv.visitLineNumber(51, l26);
 		mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
-		mv.visitTypeInsn(NEW, "java/lang/Error");
-		mv.visitInsn(DUP);
-		mv.visitLdcInsn("Dead code... ups!");
-		mv.visitMethodInsn(INVOKESPECIAL, "java/lang/Error", "<init>", "(Ljava/lang/String;)V");
-		mv.visitInsn(ATHROW);
+		mv.visitVarInsn(ALOAD, 0);
+		mv.visitVarInsn(ALOAD, 2);
+		mv.visitMethodInsn(INVOKESTATIC, "org/apache/commons/javaflow/Continuation", "startWith", "(Ljava/lang/Runnable;Ljava/lang/Object;)Lorg/apache/commons/javaflow/Continuation;");
+		mv.visitVarInsn(ASTORE, 3);
+		Label l28 = new Label();
+		mv.visitLabel(l28);
+		mv.visitLineNumber(54, l28);
+		mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+		mv.visitJumpInsn(GOTO, l17);
 		mv.visitLabel(l4);
 		mv.visitLineNumber(55, l4);
 		mv.visitFrame(Opcodes.F_FULL, 2, new Object[] {_currentClass.name().asmName(), "java/lang/Thread"}, 1, new Object[] {"java/lang/Throwable"});
 		mv.visitVarInsn(ASTORE, 4);
-		Label l28 = new Label();
-		mv.visitLabel(l28);
-		mv.visitLineNumber(56, l28);
+		Label l29 = new Label();
+		mv.visitLabel(l29);
+		mv.visitLineNumber(56, l29);
 		mv.visitFieldInsn(GETSTATIC, _currentClass.name().asmName(), "specula$inContinuation", "Ljava/lang/ThreadLocal;");
 		mv.visitInsn(ACONST_NULL);
 		mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V");
-		Label l29 = new Label();
-		mv.visitLabel(l29);
-		mv.visitLineNumber(57, l29);
+		Label l30 = new Label();
+		mv.visitLabel(l30);
+		mv.visitLineNumber(57, l30);
 		mv.visitVarInsn(ALOAD, 4);
 		mv.visitInsn(ATHROW);
 		mv.visitLabel(l20);
@@ -360,8 +364,8 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		mv.visitFieldInsn(GETSTATIC, _currentClass.name().asmName(), "specula$inContinuation", "Ljava/lang/ThreadLocal;");
 		mv.visitInsn(ACONST_NULL);
 		mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V");
-		Label l30 = new Label();
-		mv.visitJumpInsn(GOTO, l30);
+		Label l31 = new Label();
+		mv.visitJumpInsn(GOTO, l31);
 		mv.visitLabel(l12);
 		mv.visitLineNumber(59, l12);
 		mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
@@ -376,19 +380,19 @@ public class InjectCustomRunClassAdapter extends ClassAdapter implements Opcodes
 		mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;");
 		mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;");
 		mv.visitMethodInsn(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V");
-		Label l31 = new Label();
-		mv.visitLabel(l31);
-		mv.visitLineNumber(60, l31);
-		mv.visitVarInsn(ALOAD, 0);
-		mv.visitMethodInsn(INVOKESPECIAL, _currentClass.name().asmName(), "specula$run", "()V");
-		mv.visitLabel(l30);
-		mv.visitLineNumber(62, l30);
-		mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
-		mv.visitInsn(RETURN);
 		Label l32 = new Label();
 		mv.visitLabel(l32);
-		mv.visitLocalVariable("this", "L" + _currentClass.name().asmName() + ";", null, l5, l32, 0);
-		mv.visitLocalVariable("lastThread", "Ljava/lang/Thread;", null, l0, l32, 1);
+		mv.visitLineNumber(60, l32);
+		mv.visitVarInsn(ALOAD, 0);
+		mv.visitMethodInsn(INVOKESPECIAL, _currentClass.name().asmName(), "specula$run", "()V");
+		mv.visitLabel(l31);
+		mv.visitLineNumber(62, l31);
+		mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+		mv.visitInsn(RETURN);
+		Label l33 = new Label();
+		mv.visitLabel(l33);
+		mv.visitLocalVariable("this", "L" + _currentClass.name().asmName() + ";", null, l5, l33, 0);
+		mv.visitLocalVariable("lastThread", "Ljava/lang/Thread;", null, l0, l33, 1);
 		mv.visitLocalVariable("tc", "Lspecula/jvstm/ThreadContext;", null, l9, l2, 2);
 		mv.visitLocalVariable("tc", "Lspecula/jvstm/ThreadContext;", null, l16, l4, 2);
 		mv.visitLocalVariable("c", "Lorg/apache/commons/javaflow/Continuation;", null, l17, l4, 3);
