@@ -22,30 +22,6 @@ public class VBox<E> extends jvstm.VBox<E> {
 	}
 
 	@Override
-	public E get() {
-        Transaction tx = Transaction.current();
-        if (tx == null) {
-            // Access the box body without creating a full transaction, while
-            // still preserving ordering guarantees by 'piggybacking' on the
-            // version from the latest commited transaction.
-            // If the box body is GC'd before we can reach it, the process
-            // re-starts with a newer transaction.
-            while (true) {
-                int transactionNumber = Transaction.mostRecentRecord.getTransactionNumber();
-                jvstm.VBoxBody<E> boxBody = this.body;
-                do {
-                    if (boxBody.version <= transactionNumber && ((VBoxBody) boxBody).status != BodyStatus.ABORTED) {
-                        return boxBody.value;
-                    }
-                    boxBody = boxBody.next;
-                } while (boxBody != null);
-            }
-        } else {
-            return tx.getBoxValue(this);
-        }
-	}
-
-	@Override
 	public void put(E newE) {
 		Transaction tx = Transaction.current();
 		if (tx == null) {
@@ -58,13 +34,14 @@ public class VBox<E> extends jvstm.VBox<E> {
 		}
 	}
 
-//	public void abort() {
-//		this.body = non_speculative_body;
-//	}
+	public void abort(VBoxBody<E> body) {
+		this.body = non_speculative_body;
+		body.abort();
+	}
 
 	public void commit(VBoxBody<E> body) {
-		body.commit();
 		non_speculative_body = body;
+		body.commit();
 	}
 
 	@Override

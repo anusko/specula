@@ -115,13 +115,15 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 		if (_tc.hasTxAborted() || _status == TxStatus.ABORTED) return false;	
 
 		int transactionNumber = this.number;
-		if (transactionNumber % 5 == 0) return false;
+		if (transactionNumber % 5 == 0) return false; // TODO testing, remover
 
 		for (Pair<jvstm.VBox, jvstm.VBoxBody> entry : _rs) {
 			VBox box = (VBox) entry.first;
 			VBoxBody boxBody = (VBoxBody) entry.second;
 
 			synchronized (boxBody) {
+				// esperar pelo commit/abort das txs que escreveram
+				// o valor que esta tx leu
 				while (boxBody.status == BodyStatus.COMPLETE) {
 					try {
 						boxBody.wait();
@@ -129,50 +131,56 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 				}	
 			}
 
-			if (box.non_speculative_body != boxBody || boxBody.status == BodyStatus.ABORTED) return false;
+			if (box.non_speculative_body != boxBody) return false;
 		}
 		return true;
 	}
 
 	@Override
 	protected void abortTx() {
-		switch (_status) {
-		case EXECUTING:
-			_status = TxStatus.ABORTED;
-			super.abortTx();
-			break;
-		case COMPLETE:
-		case TO_ABORT:
-		case CAN_COMMIT:
-			for (Pair<VBox, VBoxBody> pair : _ws) {
-				pair.second.abort();
-			}
-			_status = TxStatus.ABORTED;
-			super.abortTx();	
-			break;
-		case COMMITTED:
-			throw new Error("Trying to abort a committed transaction.");
-		case ABORTED:
-			throw new Error("Trying to abort an already aborted transaction.");
-		}	
+		synchronized (this) {
+			switch (_status) {
+			case EXECUTING:
+				_status = TxStatus.ABORTED;
+				super.abortTx();
+				break;
+			case COMPLETE:
+			case TO_ABORT:
+			case CAN_COMMIT:
+				System.err.println("Aborting speculatively committed transaction with number " + this.number);
+				COMMIT_LOCK.lock();
+				try {
+					for (Pair<VBox, VBoxBody> pair : _ws) {
+						pair.first.abort(pair.second);
+					}
+				} finally {
+					COMMIT_LOCK.unlock();
+				}
+				_status = TxStatus.ABORTED;
+				super.abortTx();	
+				break;
+			case COMMITTED:
+				throw new Error("Trying to abort a committed transaction.");
+			case ABORTED:
+				throw new Error("Trying to abort an already aborted transaction.");
+			}		
+		}
 	}
 
 	protected void markForAbortion() {
-		// tem de ser sincronizado por cima
-		if (_status == TxStatus.COMPLETE) {
-			_status = TxStatus.TO_ABORT;
-			_tc.setAbortedTx(this);
-			synchronized (this) {
+		synchronized (this) {
+			if (_status == TxStatus.COMPLETE) {
+				_status = TxStatus.TO_ABORT;
+				_tc.setAbortedTx(this);
 				notifyAll();
 			}
 		}
 	}
 
 	protected void markForCommit() {
-		// tem de ser sincronizado por cima
-		if (_status == TxStatus.COMPLETE) {
-			_status = TxStatus.CAN_COMMIT;
-			synchronized (this) {
+		synchronized (this) {
+			if (_status == TxStatus.COMPLETE) {
+				_status = TxStatus.CAN_COMMIT;
 				notifyAll();	
 			}
 		}
@@ -182,8 +190,13 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 		assert (_status == TxStatus.CAN_COMMIT);
 
 		_status = TxStatus.COMMITTED;
-		for (Pair<VBox, VBoxBody> pair : _ws) {
-			pair.first.commit(pair.second);
+		COMMIT_LOCK.lock();
+		try {
+			for (Pair<VBox, VBoxBody> pair : _ws) {
+				pair.first.commit(pair.second);
+			}
+		} finally {
+			COMMIT_LOCK.unlock();
 		}
 
 		//		Cons cons = _bodiesCommitted;
@@ -218,13 +231,6 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 			}
 
 			if (tx._status == TxStatus.TO_ABORT) {
-				tc.lock.lock();
-				try {
-					tc.reset();
-				} finally {
-					tc.lock.unlock();
-				}
-				assert (tx._tc.hasTxAborted());
 				Continuation.cancel();
 			} else if (tx._status == TxStatus.CAN_COMMIT) {
 				tx.definitiveCommit();

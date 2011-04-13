@@ -30,16 +30,12 @@ final class ValidatingThread extends Thread {
 			}
 
 			SpeculaTopLevelTransaction tx = _queue.poll();
-			tx._tc.lock.lock();
-			try {
-				if (tx.validateCommit()) {
-					tx.markForCommit();
-				} else {
-					tx.markForAbortion();
-				}
-			} finally {
-				tx._tc.lock.unlock();
+			if (tx.validateCommit()) {
+				tx.markForCommit();
+			} else {
+				tx.markForAbortion();
 			}
+
 
 			try {
 				Thread.sleep(_delay);

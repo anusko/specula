@@ -15,28 +15,20 @@ public class VBoxBody<E> extends jvstm.VBoxBody<E> {
 		super(value, version, next);
 	}
 
-
-	@Override
-	public VBoxBody<E> getBody(int maxVersion) {
-		boolean skip = (version > maxVersion) || status == BodyStatus.ABORTED;
-		
-		return skip ? (VBoxBody<E>) next.getBody(maxVersion) : this;
-	}
-
 	void commit() {
-		assert (status == BodyStatus.COMPLETE);
-
-		status = BodyStatus.COMMITTED;
 		synchronized (this) {
+			assert (status == BodyStatus.COMPLETE);
+
+			status = BodyStatus.COMMITTED;
 			notifyAll();
 		}
 	}
 
 	void abort() {
-		assert (status == BodyStatus.COMPLETE);
-
-		status = BodyStatus.ABORTED;
 		synchronized (this) {
+			assert (status == BodyStatus.COMPLETE);
+
+			status = BodyStatus.ABORTED;
 			notifyAll();
 		}
 	}
