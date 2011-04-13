@@ -80,8 +80,6 @@ public class ThreadContext {
 			
 			if (abort) {
 				tx.abortTx();
-			} else if (tx._status == TxStatus.CAN_COMMIT) {
-				tx.definitiveCommit();
 			} else if (tx._status == TxStatus.TO_ABORT) {
 				tx.abortTx();
 				abort = true;

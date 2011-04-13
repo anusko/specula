@@ -12,7 +12,7 @@ import org.apache.commons.javaflow.Continuation;
 
 enum TxStatus {
 
-	EXECUTING, COMPLETE, TO_ABORT, ABORTED, CAN_COMMIT, COMMITTED;
+	EXECUTING, COMPLETE, TO_ABORT, ABORTED, COMMITTED;
 
 }
 
@@ -146,8 +146,7 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 				break;
 			case COMPLETE:
 			case TO_ABORT:
-			case CAN_COMMIT:
-				System.err.println("Aborting speculatively committed transaction with number " + this.number);
+				//System.err.println("Aborting speculatively committed transaction with number " + this.number);
 				COMMIT_LOCK.lock();
 				try {
 					for (Pair<VBox, VBoxBody> pair : _ws) {
@@ -177,17 +176,8 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 		}
 	}
 
-	protected void markForCommit() {
-		synchronized (this) {
-			if (_status == TxStatus.COMPLETE) {
-				_status = TxStatus.CAN_COMMIT;
-				notifyAll();	
-			}
-		}
-	}
-
 	protected void definitiveCommit() {
-		assert (_status == TxStatus.CAN_COMMIT);
+		assert (_status == TxStatus.COMPLETE);
 
 		_status = TxStatus.COMMITTED;
 		COMMIT_LOCK.lock();
@@ -197,6 +187,10 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 			}
 		} finally {
 			COMMIT_LOCK.unlock();
+		}
+		
+		synchronized (this) {
+			notifyAll();
 		}
 
 		//		Cons cons = _bodiesCommitted;
@@ -232,10 +226,9 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 
 			if (tx._status == TxStatus.TO_ABORT) {
 				Continuation.cancel();
-			} else if (tx._status == TxStatus.CAN_COMMIT) {
-				tx.definitiveCommit();
-				it.remove();
 			}
+			
+			it.remove();
 		}
 	}
 

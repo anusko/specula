@@ -31,7 +31,7 @@ final class ValidatingThread extends Thread {
 
 			SpeculaTopLevelTransaction tx = _queue.poll();
 			if (tx.validateCommit()) {
-				tx.markForCommit();
+				tx.definitiveCommit();
 			} else {
 				tx.markForAbortion();
 			}
