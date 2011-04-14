@@ -83,7 +83,7 @@ public class ThreadContext {
 			} else if (tx._status == TxStatus.TO_ABORT) {
 				tx.abortTx();
 				abort = true;
-			} else {
+			} else if (tx._status == TxStatus.COMPLETE) {
 				throw new Error("Dead code...");
 			}
 			

@@ -42,20 +42,21 @@ public class VBox<E> extends jvstm.VBox<E> {
 	}
 
 	public void abort(VBoxBody<E> body) {
-		this.body = non_speculative_body;
+		//this.body = non_speculative_body;
 		body.abort();	
 	}
 
 	public void commit(VBoxBody<E> body) {
-		assert (body.next == non_speculative_body);
-
 		non_speculative_body = body;
-		body.commit();	
+		body.commit();
 	}
 
 	@Override
 	public VBoxBody<?> commit(E newValue, int txNumber) {
 		VBoxBody<E> newBody = makeNewBody(newValue, txNumber, this.body);
+		if (newBody.next != null) {
+			((VBoxBody) newBody.next).setPrevious(newBody);
+		}
 		this.body = newBody;
 		return newBody;
 	}

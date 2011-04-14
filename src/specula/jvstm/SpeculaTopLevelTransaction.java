@@ -114,24 +114,38 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 		// tem de ser sincronizado por cima
 		if (_tc.hasTxAborted() || _status == TxStatus.ABORTED) return false;	
 
-		int transactionNumber = this.number;
-		if (transactionNumber % 5 == 0) return false; // TODO testing, remover
+		final int transactionNumber = this.number;
+		//if (transactionNumber % 5 == 0) return false; // TODO testing, remover
 
 		for (Pair<jvstm.VBox, jvstm.VBoxBody> entry : _rs) {
 			VBox box = (VBox) entry.first;
-			VBoxBody boxBody = (VBoxBody) entry.second;
+			
+			// TODO isto está errado
+//			VBoxBody boxBody = box.non_speculative_body;
+//            do {
+//                if (boxBody.version < transactionNumber) {
+//                    break;
+//                }
+//                boxBody = (VBoxBody) boxBody.next;
+//            } while (boxBody != null);
+//            
+//            if (entry.second != boxBody) return false;
 
-			synchronized (boxBody) {
-				// esperar pelo commit/abort das txs que escreveram
-				// o valor que esta tx leu
-				while (boxBody.status == BodyStatus.COMPLETE) {
-					try {
-						boxBody.wait();
-					} catch (InterruptedException e) {	}
-				}	
-			}
+			VBoxBody boxBody = (VBoxBody) entry.second;
+//			synchronized (boxBody) {
+//				// esperar pelo commit/abort das txs que escreveram
+//				// o valor que esta tx leu
+//				while (boxBody.status == BodyStatus.COMPLETE) {
+//					try {
+//						boxBody.wait();
+//					} catch (InterruptedException e) {	}
+//				}	
+//			}
+			
+			assert (boxBody.status != BodyStatus.COMPLETE);
 
 			if (box.non_speculative_body != boxBody) return false;
+			if (boxBody.status == BodyStatus.ABORTED) return false;
 		}
 		return true;
 	}
@@ -146,7 +160,7 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 				break;
 			case COMPLETE:
 			case TO_ABORT:
-				//System.err.println("Aborting speculatively committed transaction with number " + this.number);
+				System.err.println("Aborting speculatively committed transaction with number " + this.number);
 				COMMIT_LOCK.lock();
 				try {
 					for (Pair<VBox, VBoxBody> pair : _ws) {
@@ -156,7 +170,6 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 					COMMIT_LOCK.unlock();
 				}
 				_status = TxStatus.ABORTED;
-				super.abortTx();	
 				break;
 			case COMMITTED:
 				throw new Error("Trying to abort a committed transaction.");
