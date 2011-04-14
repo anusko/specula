@@ -23,7 +23,7 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	static volatile Cons<jvstm.VBoxBody> _bodiesToGC = Cons.empty();
 	static final ValidatingThread _validatingThread = new ValidatingThread(5);
 
-	volatile TxStatus _status;
+	TxStatus _status;
 	Cons<Pair<jvstm.VBox, jvstm.VBoxBody>> _rs;
 	Cons<Pair<VBox, VBoxBody>> _ws;
 	Cons<jvstm.VBoxBody> _bodiesCommitted;
@@ -114,35 +114,34 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 		// tem de ser sincronizado por cima
 		if (_tc.hasTxAborted() || _status == TxStatus.ABORTED) return false;	
 
-		final int transactionNumber = this.number;
-		//if (transactionNumber % 5 == 0) return false; // TODO testing, remover
-
 		for (Pair<jvstm.VBox, jvstm.VBoxBody> entry : _rs) {
 			VBox box = (VBox) entry.first;
-			
+
 			// TODO isto está errado
-//			VBoxBody boxBody = box.non_speculative_body;
-//            do {
-//                if (boxBody.version < transactionNumber) {
-//                    break;
-//                }
-//                boxBody = (VBoxBody) boxBody.next;
-//            } while (boxBody != null);
-//            
-//            if (entry.second != boxBody) return false;
+			//			VBoxBody boxBody = box.non_speculative_body;
+			//            do {
+			//                if (boxBody.version < transactionNumber) {
+			//                    break;
+			//                }
+			//                boxBody = (VBoxBody) boxBody.next;
+			//            } while (boxBody != null);
+			//            
+			//            if (entry.second != boxBody) return false;
 
 			VBoxBody boxBody = (VBoxBody) entry.second;
-//			synchronized (boxBody) {
-//				// esperar pelo commit/abort das txs que escreveram
-//				// o valor que esta tx leu
-//				while (boxBody.status == BodyStatus.COMPLETE) {
-//					try {
-//						boxBody.wait();
-//					} catch (InterruptedException e) {	}
-//				}	
-//			}
-			
-			assert (boxBody.status != BodyStatus.COMPLETE);
+			//			synchronized (boxBody) {
+			//				// esperar pelo commit/abort das txs que escreveram
+			//				// o valor que esta tx leu
+			//				while (boxBody.status == BodyStatus.COMPLETE) {
+			//					try {
+			//						boxBody.wait();
+			//					} catch (InterruptedException e) {	}
+			//				}	
+			//			}
+
+			if (boxBody.status == BodyStatus.COMPLETE) {
+				throw new Error();
+			}
 
 			if (box.non_speculative_body != boxBody) return false;
 			if (boxBody.status == BodyStatus.ABORTED) return false;
@@ -159,7 +158,6 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 				super.abortTx();
 				break;
 			case COMPLETE:
-			case TO_ABORT:
 				System.err.println("Aborting speculatively committed transaction with number " + this.number);
 				COMMIT_LOCK.lock();
 				try {
@@ -169,6 +167,11 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 				} finally {
 					COMMIT_LOCK.unlock();
 				}
+				_status = TxStatus.ABORTED;
+				notifyAll();
+				break;
+			case TO_ABORT:
+				System.err.println("Aborting speculatively committed transaction with number " + this.number);
 				_status = TxStatus.ABORTED;
 				break;
 			case COMMITTED:
@@ -182,6 +185,16 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	protected void markForAbortion() {
 		synchronized (this) {
 			if (_status == TxStatus.COMPLETE) {
+				
+				COMMIT_LOCK.lock();
+				try {
+					for (Pair<VBox, VBoxBody> pair : _ws) {
+						pair.first.abort(pair.second);
+					}
+				} finally {
+					COMMIT_LOCK.unlock();
+				}
+				
 				_status = TxStatus.TO_ABORT;
 				_tc.setAbortedTx(this);
 				notifyAll();
@@ -190,19 +203,19 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	}
 
 	protected void definitiveCommit() {
-		assert (_status == TxStatus.COMPLETE);
-
-		_status = TxStatus.COMMITTED;
-		COMMIT_LOCK.lock();
-		try {
-			for (Pair<VBox, VBoxBody> pair : _ws) {
-				pair.first.commit(pair.second);
-			}
-		} finally {
-			COMMIT_LOCK.unlock();
-		}
-		
 		synchronized (this) {
+			assert (_status == TxStatus.COMPLETE);
+
+			COMMIT_LOCK.lock();
+			try {
+				for (Pair<VBox, VBoxBody> pair : _ws) {
+					pair.first.commit(pair.second);
+				}
+			} finally {
+				COMMIT_LOCK.unlock();
+			}
+
+			_status = TxStatus.COMMITTED;
 			notifyAll();
 		}
 
@@ -240,7 +253,7 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 			if (tx._status == TxStatus.TO_ABORT) {
 				Continuation.cancel();
 			}
-			
+
 			it.remove();
 		}
 	}

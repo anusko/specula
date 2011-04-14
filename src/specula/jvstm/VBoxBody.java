@@ -22,7 +22,7 @@ public class VBoxBody<E> extends jvstm.VBoxBody<E> {
 		}
 	}
 
-	public volatile BodyStatus status = BodyStatus.COMPLETE;
+	public BodyStatus status = BodyStatus.COMPLETE;
 	public VBoxBody<E> previous;
 
 
