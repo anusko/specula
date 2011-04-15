@@ -23,7 +23,7 @@ public class VBoxBody<E> extends jvstm.VBoxBody<E> {
 	}
 
 	public BodyStatus status = BodyStatus.COMPLETE;
-	public VBoxBody<E> previous;
+	//public VBoxBody<E> previous;
 
 
 	public VBoxBody(E value, int version, jvstm.VBoxBody<E> next) {
@@ -44,19 +44,19 @@ public class VBoxBody<E> extends jvstm.VBoxBody<E> {
 			assert (status == BodyStatus.COMPLETE);
 
 			status = BodyStatus.ABORTED;
-			if (this.next != null) {
-				((VBoxBody<E>) this.next).previous = this.previous;
-			}
-			if (this.previous != null) {
-				this.previous.setNext(this.next);
-			}
+//			if (this.next != null) {
+//				((VBoxBody<E>) this.next).setPrevious(this.previous);
+//			}
+//			if (this.previous != null) {
+//				this.previous.setNext(this.next);
+//			}
 			notifyAll();
 		}
 	}
 
-	public void setPrevious(VBoxBody<E> body) {
-		this.previous = body;
-	}
+//	public void setPrevious(VBoxBody<E> body) {
+//		this.previous = body;
+//	}
 
 	public void setNext(jvstm.VBoxBody<E> body) {
 		// see the comments in clearPrevious()

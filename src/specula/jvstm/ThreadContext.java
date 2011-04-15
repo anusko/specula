@@ -15,7 +15,7 @@ public class ThreadContext {
 
 	private final List<SpeculaTopLevelTransaction> _transactions;
 	private Continuation _lastContinuation;
-	private SpeculaTopLevelTransaction _abortedTx;
+	private volatile SpeculaTopLevelTransaction _abortedTx;
 
 	private final Thread _startingThread;
 
@@ -57,21 +57,17 @@ public class ThreadContext {
 
 	public void setAbortedTx(SpeculaTopLevelTransaction tx) {
 		synchronized (this) {
-			_abortedTx = tx;	
+			if (_abortedTx == null) _abortedTx = tx;
 		}
 	}
-
-	public Continuation getResumePoint() {
+	
+	public boolean isTheAbortedTx(SpeculaTopLevelTransaction tx) {
 		synchronized (this) {
-			assert (hasTxAborted());
-
-			Continuation c = _abortedTx._resumeAt;
-			_abortedTx = null;
-			return c;
+			return (_abortedTx == tx);
 		}
 	}
 
-	public void reset() {
+	public Continuation reset() {
 		Iterator<SpeculaTopLevelTransaction> it = getTransactions().iterator();
 		boolean abort = false;
 		
@@ -82,6 +78,7 @@ public class ThreadContext {
 				tx.abortTx();
 			} else if (tx._status == TxStatus.TO_ABORT) {
 				tx.abortTx();
+				assert (tx == _abortedTx);
 				abort = true;
 			} else if (tx._status == TxStatus.COMPLETE) {
 				throw new Error("Dead code...");
@@ -89,6 +86,17 @@ public class ThreadContext {
 			
 			it.remove();
 		}
+		
+		assert (_transactions.isEmpty());
+		
+		Continuation resumePoint;
+		synchronized (this) {
+			resumePoint = _abortedTx._resumeAt;
+			_abortedTx = null;	
+		}
+		_lastContinuation = null;
+		
+		return resumePoint;
 	}
 
 }

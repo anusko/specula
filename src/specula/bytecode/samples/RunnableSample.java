@@ -30,8 +30,9 @@ public abstract class RunnableSample implements Runnable {
 		if (specula$inContinuation.get() == null
 				&& (lastThread == null || lastThread != Thread.currentThread())) {
 			System.err.println("Starting a new ThreadContext @ " + this.getClass().getName());
+			
+			specula$inContinuation.set(specula$IN_USE);
 			try {
-				specula$inContinuation.set(specula$IN_USE);
 				ThreadContext tc = new ThreadContext();
 				Continuation c = Continuation.startWith(this, tc);
 				do {
@@ -43,9 +44,9 @@ public abstract class RunnableSample implements Runnable {
 							break;
 						}
 					} else {
-						tc.reset();
-						c = tc.getResumePoint();
-						if (c != null){
+						c = tc.reset();
+						if (c != null) {
+							tc.setLastContinuation(c);
 							c = Continuation.continueWith(c, tc);
 						} else {
 							c = Continuation.startWith(this, tc);

@@ -36,7 +36,6 @@ final class ValidatingThread extends Thread {
 				tx.markForAbortion();
 			}
 
-
 			try {
 				Thread.sleep(_delay);
 			} catch (InterruptedException e) {
