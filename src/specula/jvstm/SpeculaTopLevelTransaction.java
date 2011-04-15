@@ -22,6 +22,8 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	 * TODO list
 	 * 
 	 * - Abortar transacções write-only ou pensar em solução melhor
+	 * - Um get ou set fora duma transacção é bloqueante por causa
+	 *   de possíveis inicializações no clinit
 	 */
 
 	public static final ReentrantLock COMMIT_LOCK = new ReentrantLock(true);

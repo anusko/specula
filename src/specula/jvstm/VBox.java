@@ -1,5 +1,7 @@
 package specula.jvstm;
 
+import org.apache.commons.javaflow.Continuation;
+
 import jvstm.Transaction;
 
 public class VBox<E> extends jvstm.VBox<E> {
@@ -13,7 +15,6 @@ public class VBox<E> extends jvstm.VBox<E> {
 
 	public VBox(E initial) {
 		super(initial);
-		//commit((VBoxBody<E>) this.body);
 	}
 
 	// used for persistence support
@@ -23,19 +24,45 @@ public class VBox<E> extends jvstm.VBox<E> {
 
 	@Override
 	public E get() {
-		Transaction tx = Transaction.current();
+		SpeculaTopLevelTransaction tx = (SpeculaTopLevelTransaction) Transaction.current();
 		if (tx == null) {
-			throw new Error();
+			do {
+				tx = (SpeculaTopLevelTransaction) Transaction.begin();
+				E value = tx.getBoxValue(this);
+				Transaction.commit();
+				
+				synchronized (tx) {
+					while (tx._status == TxStatus.COMPLETE) {
+						try {
+							tx.wait();
+						} catch (InterruptedException e) { }
+					}
+					if (tx._status == TxStatus.COMMITTED) return value;
+				}
+			} while (true);
 		} else {
-			return tx.getBoxValue(this);	
+			return tx.getBoxValue(this);
 		}
 	}
 
 	@Override
 	public void put(E newE) {
-		Transaction tx = Transaction.current();
+		SpeculaTopLevelTransaction tx = (SpeculaTopLevelTransaction) Transaction.current();
 		if (tx == null) {
-			throw new Error();
+			do {
+				tx = (SpeculaTopLevelTransaction) Transaction.begin();
+				tx.setBoxValue(this, newE);
+				Transaction.commit();
+				
+				synchronized (tx) {
+					while (tx._status == TxStatus.COMPLETE) {
+						try {
+							tx.wait();
+						} catch (InterruptedException e) { }
+					}
+					if (tx._status == TxStatus.COMMITTED) return;
+				}
+			} while (true);
 		} else {
 			tx.setBoxValue(this, newE);
 		}
