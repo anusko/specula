@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 import jvstm.ActiveTransactionsRecord;
+import jvstm.PerTxBox;
 import jvstm.util.Cons;
 import jvstm.util.Pair;
 
@@ -17,7 +18,7 @@ enum TxStatus {
 }
 
 public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
-	
+
 	/*
 	 * TODO list
 	 * 
@@ -28,13 +29,15 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 
 	public static final ReentrantLock COMMIT_LOCK = new ReentrantLock(true);
 
-	static volatile Cons<jvstm.VBoxBody> _bodiesToGC = Cons.empty();
+	static Cons<jvstm.VBoxBody> _bodiesToGC = Cons.empty();
 	static final ValidatingThread _validatingThread = new ValidatingThread(10);
 
 	TxStatus _status;
 	public Cons<Pair<jvstm.VBox, jvstm.VBoxBody>> _rs;
 	Cons<Pair<VBox, VBoxBody>> _ws;
 	Cons<jvstm.VBoxBody> _bodiesCommitted;
+	Map<PerTxBox, Object> _perTxValues;
+	
 	final Continuation _resumeAt;
 	final ThreadContext _tc;
 
@@ -68,6 +71,7 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 		}
 
 		_rs = this.bodiesRead;
+		_perTxValues = this.perTxValues;
 		// meter no contexto
 		_tc.addTransaction(this);
 
@@ -100,6 +104,16 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	}
 
 	@Override
+	protected Cons<jvstm.VBoxBody> performValidCommit() {
+		int newTxNumber = getMostRecentCommitedNumber() + 1;
+
+		// renumber the TX to the new number
+		setNumber(newTxNumber);
+
+		return doCommit(newTxNumber);
+	}
+
+	@Override
 	protected Cons<jvstm.VBoxBody> doCommit(int newTxNumber) {
 		Cons<jvstm.VBoxBody> newBodies = Cons.empty();
 		_ws = Cons.empty();
@@ -125,7 +139,7 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 		for (Pair<jvstm.VBox, jvstm.VBoxBody> entry : _rs) {
 			VBox box = (VBox) entry.first;
 			VBoxBody boxBody = (VBoxBody) entry.second;
-			
+
 			if (boxBody.status == BodyStatus.COMPLETE) {
 				throw new Error();
 			}
@@ -171,7 +185,7 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	protected void markForAbortion() {
 		synchronized (this) {
 			if (_status == TxStatus.COMPLETE) {
-				
+
 				COMMIT_LOCK.lock();
 				try {
 					for (Pair<VBox, VBoxBody> pair : _ws) {
@@ -180,7 +194,7 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 				} finally {
 					COMMIT_LOCK.unlock();
 				}
-				
+
 				_status = TxStatus.TO_ABORT;
 				_tc.setAbortedTx(this);
 				notifyAll();
@@ -191,11 +205,15 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	protected void definitiveCommit() {
 		synchronized (this) {
 			assert (_status == TxStatus.COMPLETE);
-			
+
 			System.err.println("Committing transaction number " + this.number);
 
 			COMMIT_LOCK.lock();
 			try {
+				for (Map.Entry<PerTxBox,Object> entry : perTxValues.entrySet()) {
+					entry.getKey().commit(entry.getValue());
+				}
+			
 				for (Pair<VBox, VBoxBody> pair : _ws) {
 					pair.first.commit(pair.second);
 				}
