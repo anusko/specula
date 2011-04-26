@@ -24,6 +24,6 @@
 	</classpathentry>
 	<classpathentry kind="lib" path="lib/commons-io-2.0.1.jar"/>
 	<classpathentry kind="lib" path="lib/commons-logging-1.1.1.jar"/>
-	<classpathentry combineaccessrules="false" kind="src" path="/d2stm"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/jvstm"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

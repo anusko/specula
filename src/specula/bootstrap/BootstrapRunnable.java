@@ -21,6 +21,8 @@ public final class BootstrapRunnable implements Runnable {
 	
 	public static void main(String[] args) {
 		jvstm.Transaction.setTransactionFactory(new specula.jvstm.SpeculaTransactionFactory());
+		specula.ThreadContext.setThreadContextFactory(new specula.jvstm.JVSTMThreadContextFactory());
+		
 		new BootstrapRunnable(args).run();
 	}
 	

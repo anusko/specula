@@ -6,7 +6,7 @@ import jvstm.Transaction;
 public class SpeculaTransactionFactory implements jvstm.TransactionFactory {
 	
 	public Transaction makeTopLevelTransaction(ActiveTransactionsRecord record) {
-		return new SpeculaTopLevelTransaction(record);
+		return new TopLevelTransaction(record);
 	}
 
 	public Transaction makeReadOnlyTopLevelTransaction(ActiveTransactionsRecord record) {

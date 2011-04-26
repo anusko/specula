@@ -17,6 +17,8 @@ public class ContinuationFilter {
 		}
 
 		public boolean filter(Type type) {
+			if (type.commonName().equals("specula.jvstm.VBox")) return false;
+			
 			for (String s : prefixes()) if (type.commonName().startsWith(s)) return true;
 			return false;
 		}

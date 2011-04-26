@@ -5,19 +5,17 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 import jvstm.ActiveTransactionsRecord;
+import jvstm.CommitException;
 import jvstm.PerTxBox;
 import jvstm.util.Cons;
 import jvstm.util.Pair;
 
 import org.apache.commons.javaflow.Continuation;
 
-enum TxStatus {
+import specula.SpeculaTransaction;
+import specula.TransactionStatus;
 
-	EXECUTING, COMPLETE, TO_ABORT, ABORTED, COMMITTED;
-
-}
-
-public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
+public class TopLevelTransaction extends jvstm.TopLevelTransaction implements SpeculaTransaction {
 
 	/*
 	 * TODO list
@@ -25,55 +23,86 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 	 * - Abortar transacções write-only ou pensar em solução melhor
 	 * - Um get ou set fora duma transacção é bloqueante por causa
 	 *   de possíveis inicializações no clinit
+	 * - GC não está a funcionar
 	 */
+
+	private static final CommitException COMMIT_EXCEPTION = new CommitException();
 
 	public static final ReentrantLock COMMIT_LOCK = new ReentrantLock(true);
 
 	static Cons<jvstm.VBoxBody> _bodiesToGC = Cons.empty();
-	static final ValidatingThread _validatingThread = new ValidatingThread(10);
+	static final ValidatingThread _validatingThread = new ValidatingThread(2);
 
-	TxStatus _status;
+	TransactionStatus _status;
 	public Cons<Pair<jvstm.VBox, jvstm.VBoxBody>> _rs;
 	Cons<Pair<VBox, VBoxBody>> _ws;
 	Cons<jvstm.VBoxBody> _bodiesCommitted;
 	Map<PerTxBox, Object> _perTxValues;
-	
-	final Continuation _resumeAt;
-	final ThreadContext _tc;
+
+	private final Continuation _resumePoint;
+	private final ThreadContext _tc;
+	private boolean _ghostTransaction;
 
 	static {
 		_validatingThread.start();
 	}
 
 
-	public SpeculaTopLevelTransaction(ActiveTransactionsRecord activeRecord) {
+	public TopLevelTransaction(ActiveTransactionsRecord activeRecord) {
 		super(activeRecord);
 
 		_ws = Cons.empty();
 		_tc = (ThreadContext) Continuation.getContext();
-		_resumeAt = _tc.getLastContinuation();
+		_resumePoint = _tc.getLastContinuation();
 		_bodiesCommitted = Cons.empty();
-		_status = TxStatus.EXECUTING;
+		_status = TransactionStatus.EXECUTING;
+		_ghostTransaction = false;
 
 		assert (_tc != null);
 	}
 
-	public Continuation getResumeAt() {
-		return _resumeAt;
+	/**
+	 * A ghost transaction doesn't show up in the thread context.
+	 * This is useful to a put/get values into/from VBoxes when outside
+	 * of a transaction. 
+	 */
+	public void setAsGhostTransaction() {
+		_ghostTransaction = true;
+	}
+
+	@Override
+	public ThreadContext getThreadContext() {
+		return _tc;
+	}
+
+	@Override
+	public Continuation getResumePoint() {
+		return _resumePoint;
+	}
+
+	@Override
+	public TransactionStatus getStatus() {
+		return _status;
 	}
 
 	@Override
 	protected void tryCommit() {
-		if (_tc.hasTxAborted()) {
-			abortTx();
-			sync();
+		// FIXME: daqui vem o problem do NullPointerException no bloco finally dos
+		// métodos @Atomic pq o Continuation.cancel() dentro do sync() leva ao retorno
+		// do método, o que faz com que o bloco finally seja executado.
+		// TODO: talvez o mais correcto seja lançar uma excepção nova, tipo
+		// SpeculativeCommitException e fazer o Continuation.cancel() aí.
+		if (_tc.hasTransactionAborted()) {
+			//			abortTx();
+			//			sync();
+			throw COMMIT_EXCEPTION;
 			// execução vai ficar por aqui
 		}
 
 		_rs = this.bodiesRead;
 		_perTxValues = this.perTxValues;
 		// meter no contexto
-		_tc.addTransaction(this);
+		if (! _ghostTransaction) _tc.addTransaction(this);
 
 		//if (isWriteTransaction()) {
 		COMMIT_LOCK.lock();
@@ -82,7 +111,7 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 			// the commit is already done, so create a new ActiveTransactionsRecord
 			ActiveTransactionsRecord newRecord = new ActiveTransactionsRecord(getNumber(), _bodiesToGC);
 			setMostRecentActiveRecord(newRecord);
-			_bodiesToGC = Cons.empty();
+			//			_bodiesToGC = Cons.empty();
 
 			// as this transaction changed number, we must
 			// update the activeRecords accordingly
@@ -93,7 +122,10 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 			this.activeTxRecord.decrementRunning();
 			this.activeTxRecord = newRecord;
 
-			_status = TxStatus.COMPLETE;
+			synchronized (this) {
+				// sincronizar para forçar a visibilidade do _status nas outras threads
+				_status = TransactionStatus.COMPLETE;	
+			}
 
 			// meter na queue para validar
 			_validatingThread.enqueue(this);
@@ -133,58 +165,58 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 
 	@Override
 	protected boolean validateCommit() {
-		// tem de ser sincronizado por cima
-		if (_tc.hasTxAborted() || _status == TxStatus.ABORTED) return false;	
+		synchronized (this) {
+			// para ter a certeza que lemos o valor mais recente do _status
+			if (_tc.hasTransactionAborted() || _status == TransactionStatus.ABORTED) return false;	
+		}
 
 		for (Pair<jvstm.VBox, jvstm.VBoxBody> entry : _rs) {
 			VBox box = (VBox) entry.first;
 			VBoxBody boxBody = (VBoxBody) entry.second;
 
-			if (boxBody.status == BodyStatus.COMPLETE) {
-				throw new Error();
-			}
+			assert (boxBody.status != BodyStatus.COMPLETE);
 
 			if (box.non_speculative_body != boxBody) return false;
 		}
+
 		return true;
 	}
 
 	@Override
-	protected void abortTx() {
-		synchronized (this) {
-			switch (_status) {
-			case EXECUTING:
-				_status = TxStatus.ABORTED;
-				super.abortTx();
-				break;
-			case COMPLETE:
-				System.err.println("Aborting speculatively committed transaction number " + this.number);
-				COMMIT_LOCK.lock();
-				try {
-					for (Pair<VBox, VBoxBody> pair : _ws) {
-						pair.first.abort(pair.second);
-					}
-				} finally {
-					COMMIT_LOCK.unlock();
+	public synchronized void abortTx() {
+		switch (_status) {
+		case EXECUTING:
+			_status = TransactionStatus.ABORTED;
+			super.abortTx();
+			break;
+		case COMPLETE:
+			System.err.println("Aborting speculatively committed transaction number " + this.number);
+			COMMIT_LOCK.lock();
+			try {
+				for (Pair<VBox, VBoxBody> pair : _ws) {
+					pair.first.abort(pair.second);
 				}
-				_status = TxStatus.ABORTED;
-				notifyAll();
-				break;
-			case TO_ABORT:
-				System.err.println("Aborting speculatively committed transaction number " + this.number);
-				_status = TxStatus.ABORTED;
-				break;
-			case COMMITTED:
-				throw new Error("Trying to abort a committed transaction.");
-			case ABORTED:
-				throw new Error("Trying to abort an already aborted transaction.");
-			}		
+			} finally {
+				COMMIT_LOCK.unlock();
+			}
+			_status = TransactionStatus.ABORTED;
+			notifyAll();
+			cleanup();
+			break;
+		case TO_ABORT:
+			System.err.println("Aborting speculatively committed transaction number " + this.number);
+			_status = TransactionStatus.ABORTED;
+			break;
+		case COMMITTED:
+			throw new Error("Trying to abort a committed transaction.");
+		case ABORTED:
+			throw new Error("Trying to abort an already aborted transaction.");
 		}
 	}
 
 	protected void markForAbortion() {
 		synchronized (this) {
-			if (_status == TxStatus.COMPLETE) {
+			if (_status == TransactionStatus.COMPLETE) {
 
 				COMMIT_LOCK.lock();
 				try {
@@ -195,25 +227,27 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 					COMMIT_LOCK.unlock();
 				}
 
-				_status = TxStatus.TO_ABORT;
-				_tc.setAbortedTx(this);
+				_status = TransactionStatus.TO_ABORT;
+				if (! _ghostTransaction) _tc.setAbortedTransaction(this);
 				notifyAll();
 			}
 		}
+
+		cleanup();
 	}
 
 	protected void definitiveCommit() {
 		synchronized (this) {
-			assert (_status == TxStatus.COMPLETE);
+			assert (_status == TransactionStatus.COMPLETE);
 
 			System.err.println("Committing transaction number " + this.number);
 
 			COMMIT_LOCK.lock();
 			try {
-				for (Map.Entry<PerTxBox,Object> entry : perTxValues.entrySet()) {
+				for (Map.Entry<PerTxBox,Object> entry : _perTxValues.entrySet()) {
 					entry.getKey().commit(entry.getValue());
 				}
-			
+
 				for (Pair<VBox, VBoxBody> pair : _ws) {
 					pair.first.commit(pair.second);
 				}
@@ -221,9 +255,13 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 				COMMIT_LOCK.unlock();
 			}
 
-			_status = TxStatus.COMMITTED;
+			_status = TransactionStatus.COMMITTED;
 			notifyAll();
 		}
+
+		cleanup();
+
+		// GC stuff
 
 		//		Cons cons = _bodiesCommitted;
 		//		while (cons.rest() != null) cons = cons.rest();
@@ -240,14 +278,22 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 		//		}
 	}
 
+	protected void cleanup() {
+		// lets help the JVM GC
+		//		_rs = null;
+		//		_ws = null;
+		//		_perTxValues = null;
+		//		_bodiesCommitted = null;
+	}
+
 	public static void sync() {
 		ThreadContext tc = (ThreadContext) Continuation.getContext();
-		Iterator<SpeculaTopLevelTransaction> it = tc.getTransactions().iterator();
+		Iterator<SpeculaTransaction> it = tc.getTransactions().iterator();
 
 		while (it.hasNext()) {
-			SpeculaTopLevelTransaction tx = it.next();
+			SpeculaTransaction tx = it.next();
 			synchronized (tx) {
-				while (tx._status == TxStatus.COMPLETE) {
+				while (tx.getStatus() == TransactionStatus.COMPLETE) {
 					try {
 						tx.wait();
 					} catch (InterruptedException e) {
@@ -256,8 +302,8 @@ public class SpeculaTopLevelTransaction extends jvstm.TopLevelTransaction {
 				}
 			}
 
-			if (tx._status == TxStatus.TO_ABORT) {
-				assert (tc.isTheAbortedTx(tx));
+			if (tx.getStatus() == TransactionStatus.TO_ABORT) {
+				assert (tc.isTheAbortedTransaction(tx));
 				Continuation.cancel();
 			}
 
