@@ -1,4 +1,4 @@
-package specula;
+package specula.core;
 
 /**
  * EXECUTING -> The transaction is currently executing;

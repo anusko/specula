@@ -1,8 +1,8 @@
-package specula.bytecode.samples;
+package specula.samples;
 
 import org.apache.commons.javaflow.Continuation;
 
-import specula.ThreadContext;
+import specula.core.ThreadContext;
 
 public abstract class RunnableSample implements Runnable {
 

@@ -1,4 +1,4 @@
-package specula;
+package specula.core;
 
 import org.apache.commons.javaflow.Continuation;
 

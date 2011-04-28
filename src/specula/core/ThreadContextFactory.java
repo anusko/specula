@@ -1,4 +1,4 @@
-package specula;
+package specula.core;
 
 public interface ThreadContextFactory {
 
